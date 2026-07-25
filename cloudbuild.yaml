@@ -110,9 +110,18 @@ steps:
         set -e
         REV=$(gcloud run services describe $_SERVICE --region=$_REGION \
               --format='value(status.latestCreatedRevisionName)')
+        # Find the tagged URL by matching the tag we just set, not with --filter.
+        # The cloud-sdk image's gcloud rejects --filter alongside --flatten, so
+        # this splits the semicolon separated list and greps instead. Portable
+        # across gcloud versions, which a CI image will change under us.
         CAND=$(gcloud run services describe $_SERVICE --region=$_REGION \
-               --format='value(status.traffic.url)' --flatten='status.traffic[]' \
-               --filter="status.traffic.revisionName=$$REV" | head -1)
+               --format='value(status.traffic[].url)' \
+               | tr ';' '\n' | grep "rev$SHORT_SHA" | head -1)
+        if [ -z "$$CAND" ]; then
+          echo "no tagged URL for rev$SHORT_SHA; cannot test the new revision in"
+          echo "isolation, so refusing to promote it blind."
+          exit 1
+        fi
         echo "testing $$REV at $$CAND"
         chmod +x scripts/smoke.sh
         ./scripts/smoke.sh "$$CAND"

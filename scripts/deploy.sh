@@ -35,6 +35,9 @@ gcloud services enable run.googleapis.com artifactregistry.googleapis.com >/dev/
 # rather than on the build. Building here uses only permissions we already hold.
 IMAGE="$REGION-docker.pkg.dev/$PROJECT/cloud-run-source-deploy/$SERVICE"
 TAG="$(cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null || echo manual)"
+# Cloud Run tags allow lowercase alphanumerics and hyphens only, so the commit sha
+# is stripped to be safe. Defined here, before the deploy that uses it.
+TAGNAME="rev$(echo "$TAG" | tr -cd '[:alnum:]' | tail -c 8)"
 
 echo "· building $IMAGE:$TAG"
 gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet >/dev/null 2>&1
@@ -66,7 +69,7 @@ gcloud run deploy "$SERVICE" \
   --timeout 600 \
   --port 8080 \
   --no-traffic \
-  --tag "rev$(echo "$TAG" | tr -cd '[:alnum:]' | tail -c 8)" \
+  --tag "$TAGNAME" \
   --update-env-vars "$ENVS" \
   --quiet
 
@@ -74,19 +77,24 @@ REV="$(gcloud run services describe "$SERVICE" --region "$REGION" \
         --format='value(status.latestCreatedRevisionName)')"
 # The tagged URL addresses this revision specifically, so the smoke test measures
 # the thing we just built and not whatever is currently serving traffic.
+#
+# Matched by grepping the tag rather than with --filter, because some gcloud
+# builds reject --filter alongside --flatten and that combination silently
+# produced an empty URL inside Cloud Build.
 CAND="$(gcloud run services describe "$SERVICE" --region "$REGION" \
-        --format="value(status.traffic.url)" --flatten="status.traffic[]" \
-        --filter="status.traffic.revisionName=$REV" 2>/dev/null | head -1)"
+        --format='value(status.traffic[].url)' 2>/dev/null \
+        | tr ';' '\n' | grep "$TAGNAME" | head -1)"
 LIVE="$(gcloud run services describe "$SERVICE" --region "$REGION" \
         --format='value(status.url)')"
 
 echo "· built revision $REV"
 
 if [ -z "$CAND" ]; then
-  echo "  WARNING: no tagged URL for $REV, smoke testing the live URL after cutover"
-  gcloud run services update-traffic "$SERVICE" --region "$REGION" \
-    --to-latest --quiet >/dev/null
-  "$ROOT/scripts/smoke.sh" "$LIVE"
+  # Refuse rather than cut over and test afterwards. Promoting first and checking
+  # second is not a gate, it is an outage with a report attached.
+  echo "  DEPLOY HELD. No tagged URL for $REV, so the new revision cannot be"
+  echo "  tested in isolation. It is serving NO traffic and $LIVE is unchanged."
+  exit 1
 else
   if "$ROOT/scripts/smoke.sh" "$CAND"; then
     echo
