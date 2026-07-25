@@ -203,13 +203,14 @@
           <div style="display:flex;flex-direction:column;gap:8px">
             <input class="f" id="bdFile" type="file" accept=".pdf,.txt,.fountain" style="padding:7px">
             <label class="tiny faint" style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;margin:0">
-              <input type="checkbox" id="bdReplace"> replace existing scenes</label>
+              <input type="checkbox" id="bdAppend"> add to the current story</label>
             <button class="act primary" id="btnImport">Import scenes</button>
+            <button class="act" id="btnCastLeads">Cast the leads</button>
           </div>
         </div>
         <div class="tiny faint" style="margin-top:9px">
-          Parsed into scenes and dropped onto the board. Text is free, so this
-          makes no images. Pick a scene below and plan its shots.
+          Rebuilds the story from the script: its scenes and its characters, no
+          images. Then Cast the leads to lock their faces, and plan a scene's shots.
         </div>
       </div>
 
