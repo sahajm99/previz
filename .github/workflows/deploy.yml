@@ -1,18 +1,36 @@
 # Deploy main to Cloud Run. Anyone merges or pushes to main, this runs.
 #
 # ─────────────────────────────────────────────────────────────────────────────
-# ONE SETUP STEP, then this works forever. Run it once, from a shell with gcloud
-# and gh authenticated as an account that can read the project:
+# ONE SETUP STEP, then this works forever. Needs ADMIN on the repo, which push
+# access is not enough for. Until it is done every run fails in about 15 seconds
+# on the "key is missing" step, before it builds anything.
+#
+# The repo is sahajm99/previz, not the fork. An earlier version of this comment
+# said SampreethAvvari/previz, which puts the secret somewhere this workflow
+# never reads and looks identical to having done nothing.
+#
+# Git Bash, or any POSIX shell. The key is piped straight from gcloud into the
+# GitHub secret, so it never lands on disk or in scrollback:
 #
 #   gcloud iam service-accounts keys create - \
 #     --iam-account=775345250143-compute@developer.gserviceaccount.com \
-#   | gh secret set GCP_SA_KEY --repo SampreethAvvari/previz
+#     --project=nyu-ai-builder26nyc-9338 \
+#   | gh secret set GCP_SA_KEY --repo sahajm99/previz
 #
-#   gh variable set GOOGLE_OAUTH_CLIENT_ID --repo SampreethAvvari/previz \
-#     --body "775345250143-5ga300fac55k4lrguii014nfr5g4sqj2.apps.googleusercontent.com"
+# PowerShell cannot do that in one line: piping one native executable into
+# another mangles the bytes, and there is no `<` redirection. Three lines, and
+# delete the file:
 #
-# The key is piped straight from gcloud into the GitHub secret. It never lands on
-# disk and never appears in a terminal. Nothing else is needed.
+#   gcloud iam service-accounts keys create $env:TEMP\k.json --iam-account=775345250143-compute@developer.gserviceaccount.com --project=nyu-ai-builder26nyc-9338
+#   gh secret set GCP_SA_KEY --repo sahajm99/previz --body (Get-Content $env:TEMP\k.json -Raw)
+#   Remove-Item $env:TEMP\k.json
+#
+# GOOGLE_OAUTH_CLIENT_ID is already set as a repo variable, so it needs nothing.
+#
+# NOT REQUIRED TO SHIP. scripts/deploy.sh does the same deploy from any machine
+# with gcloud and docker, using that person's own credentials and no key at all.
+# That is how the service was first deployed. This workflow only buys automatic
+# deploys on push.
 #
 # WHY A KEY AND NOT WORKLOAD IDENTITY. WIF is the better answer and it is not
 # available on this project. Every keyless path needs an IAM change this account
