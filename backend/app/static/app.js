@@ -242,7 +242,16 @@ function drawBoard() {
     return;
   }
   box.innerHTML = sc.shots.map(frameFor).join("");
+  bindFrameButtons();
+}
+
+/* Every frame carries three actions: regenerate (same shot), more (variants off
+ * this frame) and tinker (nudge this frame with an instruction). Rebound after
+ * any repaint, exactly like the regenerate button always was. */
+function bindFrameButtons() {
   $$("#board .regen").forEach((b) => b.onclick = () => renderOne(b.dataset.id));
+  $$("#board .more").forEach((b) => b.onclick = () => moreLike(b.dataset.id));
+  $$("#board .tink").forEach((b) => b.onclick = () => tinker(b.dataset.id));
 }
 
 function frameFor(sh) {
@@ -267,6 +276,8 @@ function frameFor(sh) {
         <span>${esc(sh.shot_size)} · ${esc(sh.angle)} · ${esc(sh.lens)} · ${esc(sh.movement)}</span>
         <button class="act regen" data-id="${sh.id}" style="margin-left:auto;padding:3px 8px;font-size:11px">
           regenerate</button>
+        <button class="act more" data-id="${sh.id}" style="padding:3px 8px;font-size:11px">more</button>
+        <button class="act tink" data-id="${sh.id}" style="padding:3px 8px;font-size:11px">tinker</button>
       </div>
       <div class="desc">${esc(sh.description)}</div>
     </div>`;
@@ -312,7 +323,7 @@ function paint(sh) {
   else $("#board").insertAdjacentHTML("beforeend", html);
   const fresh = $(`#f-${sh.id}`);
   fresh?.classList.add("new");
-  $$(`#f-${sh.id} .regen`).forEach((b) => b.onclick = () => renderOne(b.dataset.id));
+  bindFrameButtons();
 }
 
 async function budget() {
@@ -322,6 +333,79 @@ async function budget() {
     $("#budget").className = "chip mono " + (b.spent >= b.cap ? "bad" : b.spent ? "warn" : "");
   } catch {}
 }
+
+/* More frames off one chosen frame. They stream in and land as new cards; the
+ * final load() re-renders the scene so they sit in order. */
+async function moreLike(id) {
+  const el = $(`#f-${id} .img`);
+  if (el) el.insertAdjacentHTML("beforeend", `<div class="shimmer"></div>`);
+  await sse(`/shots/${id}/more`, { n: 2, style: $("#bdStyle").value }, {
+    shot_ready: (e) => paint(e.shot),
+    run_end: () => { load(); budget(); },
+  });
+}
+
+/* Tinker one frame with a plain instruction. Same shot, regenerated in place. */
+async function tinker(id) {
+  const instruction = prompt("Tinker this frame. What should change?");
+  if (!instruction || !instruction.trim()) return;
+  const el = $(`#f-${id} .img`);
+  if (el) el.insertAdjacentHTML("beforeend", `<div class="shimmer"></div>`);
+  await sse(`/shots/${id}/tinker`,
+    { instruction: instruction.trim(), style: $("#bdStyle").value }, {
+    shot_ready: (e) => paint(e.shot),
+    run_end: () => { load(); budget(); },
+  });
+}
+
+/* Import a screenplay (paste or PDF) straight onto the board. Raw fetch, because
+ * api() sends JSON and this is multipart. */
+$("#btnImport").onclick = async () => {
+  const text = $("#bdScript").value.trim();
+  const file = $("#bdFile").files[0];
+  if (!text && !file) { trace("import", "paste a script or choose a PDF first", "viol"); return; }
+  const fd = new FormData();
+  if (text) fd.append("text", text);
+  if (file) fd.append("file", file);
+  fd.append("replace", $("#bdReplace").checked ? "true" : "false");
+  $("#btnImport").disabled = true;
+  $$("#itabs button")[1].click();
+  try {
+    const r = await fetch("/api/scenes/import", { method: "POST", body: fd });
+    if (!r.ok) { trace("import", `${r.status} ${(await r.text()).slice(0, 200)}`, "err"); return; }
+    const j = await r.json();
+    trace("import", `${j.imported} scene(s) added, starting at ${j.first_number}`, "done");
+    $("#bdScript").value = ""; $("#bdFile").value = "";
+    await load();
+    $("#bdScene").value = j.first_number;
+    drawBoard();
+  } catch (e) { trace("import", String(e), "err"); }
+  finally { $("#btnImport").disabled = false; }
+};
+
+/* Director chat for the selected scene. Text only: decide coverage before paying
+ * for frames, which is the same order the board itself works in. */
+async function sceneChat() {
+  const n = +$("#bdScene").value;
+  const msg = $("#bdChatMsg").value.trim();
+  if (!msg) return;
+  const log = $("#bdChat");
+  if (log.classList.contains("faint")) { log.classList.remove("faint"); log.innerHTML = ""; }
+  log.insertAdjacentHTML("beforeend", `<div class="turn you"><b>you</b> ${esc(msg)}</div>`);
+  $("#bdChatMsg").value = "";
+  $("#btnChat").disabled = true;
+  log.scrollTop = log.scrollHeight;
+  await sse(`/scenes/${n}/chat`, { message: msg }, {
+    data: (e) => {
+      log.insertAdjacentHTML("beforeend",
+        `<div class="turn dir"><b>director</b> ${esc(e.reply || "")}</div>`);
+      log.scrollTop = log.scrollHeight;
+    },
+  });
+  $("#btnChat").disabled = false;
+}
+$("#btnChat").onclick = sceneChat;
+$("#bdChatMsg").addEventListener("keydown", (e) => { if (e.key === "Enter") sceneChat(); });
 
 /* ------------------------------------------------------------------ the script */
 
