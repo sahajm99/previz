@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # costs real money per call.
     max_images_per_story: int = 60
 
+    locations_cache_dir: str = "demo_cache/locations"
+    locations_db_file: str = "demo_cache/locations_db.json"
+    canvas_db_file: str = "demo_cache/canvas_board.json"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
