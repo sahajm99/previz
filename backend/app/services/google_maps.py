@@ -159,6 +159,30 @@ def search_text(
     try:
         with httpx.Client(timeout=10) as client:
             r = client.post(_SEARCH_TEXT_URL, headers=headers, json=payload)
+
+            # includedType is the most fragile part of this request. Places API
+            # (New) accepts only its own primary-type table, so a legacy or
+            # invented type is a hard 400 and the whole search returns nothing.
+            # "establishment" is exactly that: a legacy type, and it was the
+            # default fallback upstream, so a query like "nyc skyline" came back
+            # empty while the same query without a type returned an observation
+            # deck, a rooftop bar and a scenic viewpoint.
+            #
+            # The type is a hint, never a requirement. If Places rejects it, drop
+            # it and search again rather than reporting no results for a query
+            # that has plenty.
+            if r.status_code == 400 and "includedType" in payload:
+                detail = ""
+                try:
+                    detail = r.json().get("error", {}).get("message", "")
+                except Exception:  # noqa: BLE001
+                    pass
+                if "included_type" in detail or "includedType" in detail:
+                    print(f"  places: dropping invalid includedType "
+                          f"{payload['includedType']!r} and retrying")
+                    payload.pop("includedType")
+                    r = client.post(_SEARCH_TEXT_URL, headers=headers, json=payload)
+
             r.raise_for_status()
             data = r.json()
             if not isinstance(data, dict):

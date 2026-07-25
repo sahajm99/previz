@@ -86,7 +86,28 @@ echo "· pushed $TAG"
 # delete it and turn login off for everyone.
 ENVS="GCP_PROJECT=$PROJECT,GCP_LOCATION=$REGION"
 ENVS="$ENVS${GOOGLE_MAPS_API_KEY:+,GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY}"
-ENVS="$ENVS${GOOGLE_OAUTH_CLIENT_ID:+,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID}"
+# AUTH=off deploys with sign-in disabled, so the app opens straight onto the story
+# and every tab is reachable without a Google account.
+#
+#   AUTH=off bash scripts/deploy.sh    sign-in disabled, app is open
+#   bash scripts/deploy.sh             sign-in on (default)
+#
+# Google sign-in has one failure mode that locks everyone out of a completely
+# healthy app: Error 400 origin_mismatch, when the Cloud Run URL is not registered
+# as an Authorized JavaScript origin on the OAuth client. Every tab is built,
+# mounted and serving, and nobody can see any of it. There are also TWO Cloud Run
+# URLs for this service, so registering one and opening the other reproduces it.
+#
+# --remove-env-vars is required rather than merely omitting the value:
+# --update-env-vars only adds and overwrites, so leaving the client id out keeps
+# the previous one and auth stays on.
+AUTH_FLAG=""
+if [ "${AUTH:-on}" = "off" ]; then
+  AUTH_FLAG="--remove-env-vars=GOOGLE_OAUTH_CLIENT_ID"
+  echo "· AUTH=off, sign-in DISABLED, anyone with the URL can use the app"
+else
+  ENVS="$ENVS${GOOGLE_OAUTH_CLIENT_ID:+,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID}"
+fi
 
 echo "· deploying with no traffic"
 # --max-instances 1 is NOT a cost decision, it is a correctness one. Read this
@@ -119,6 +140,7 @@ gcloud run deploy "$SERVICE" \
   --no-traffic \
   --tag "$TAGNAME" \
   --update-env-vars "$ENVS" \
+  ${AUTH_FLAG} \
   --quiet
 
 REV="$(gcloud run services describe "$SERVICE" --region "$REGION" \

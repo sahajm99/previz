@@ -52,7 +52,16 @@ class LocationScoutAgent:
         default_res = {
             "search_query": req.query,
             "region": req.region or "New York, NY",
-            "included_type": "restaurant" if "diner" in req.query.lower() else "establishment",
+            # None, not "establishment". "establishment" is a legacy Places type
+            # and Places API (New) rejects it as includedType with a 400, so this
+            # default silently emptied every search that fell back to it. A
+            # filmmaker searching "nyc skyline" got nothing while the unfiltered
+            # query returns an observation deck, a rooftop bar and a viewpoint.
+            #
+            # No type is the right default anyway: a location scout wants a
+            # rooftop, an alley or a viewpoint as readily as a business, and
+            # includedType only ever narrows.
+            "included_type": "restaurant" if "diner" in req.query.lower() else None,
             "aesthetic_vibe": req.query,
             "budget_tier": req.budget_tier or "Low",
             "time_of_day": req.time_of_day or "Night",
