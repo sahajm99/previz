@@ -1,0 +1,165 @@
+/* Bible tab · the entity lists, the Context Inspector, and the canon treatment.
+ *
+ * A separate file from app.css on purpose. Several people are editing this app at
+ * once today, and a stylesheet is the easiest thing in a project to conflict on.
+ * Everything here is additive: it uses the variables app.css already defines and
+ * adds no rule that changes an existing element's default look.
+ *
+ * The one idea worth stating: CANON AND DRAFT MUST NEVER LOOK ALIKE. Draft is
+ * something an agent inferred and nobody has confirmed. If it renders in the same
+ * settled grey as a fact the writer typed, then the interface is quietly lying
+ * about what is true, which is the exact failure the two layer model exists to
+ * prevent. So canon is solid edged and level, and draft is dashed, warm, italic
+ * where it is prose, and always carries the word unconfirmed.
+ */
+
+/* -------------------------------------------------------- canon versus draft */
+
+.lay {
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+.lay.canon {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 34%, transparent);
+  background: color-mix(in srgb, var(--ok) 9%, transparent);
+}
+.lay.draft {
+  color: var(--warn);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--warn) 52%, transparent);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+.lay.draft::after { content: " · unconfirmed"; opacity: 0.72; }
+
+/* Any block carrying unconfirmed content leans on the same signal, so the layer
+ * is readable from the shape of the row without reading the badge. */
+.is-draft {
+  border-left: 2px dashed color-mix(in srgb, var(--warn) 60%, transparent);
+  padding-left: 9px;
+}
+.is-draft .t, .is-draft .body { color: color-mix(in srgb, var(--warn) 30%, var(--ink-dim)); }
+.is-canon { border-left: 2px solid color-mix(in srgb, var(--ok) 42%, transparent); padding-left: 9px; }
+
+/* --------------------------------------------------------- the entity lists */
+
+.ent {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 15px;
+  background: var(--panel);
+}
+.ent .top { display: flex; align-items: baseline; gap: 8px; }
+.ent .nm { font-weight: 500; }
+.ent .sub { color: var(--ink-faint); font-size: 12px; }
+.ent .body { color: var(--ink-dim); font-size: 12.5px; line-height: 1.5; margin: 7px 0 9px; }
+.ent .feet { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* ------------------------------------------------------ the Context Inspector */
+
+.ci-controls {
+  display: grid;
+  grid-template-columns: 190px 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+.ci-cast { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 11px; }
+.ci-cast button {
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink-faint);
+  border-radius: 999px;
+  padding: 3px 11px;
+  font: 500 11.5px var(--ui);
+  cursor: pointer;
+  transition: color var(--t) var(--ease), border-color var(--t) var(--ease);
+}
+.ci-cast button.on {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.ci-sum {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  margin: 16px 0 10px;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.ci-sum b { color: var(--ink-dim); font-weight: 500; }
+
+/* One row per slot. The bar is the slot against its ceiling, because the
+ * interesting thing about a fixed budget is how close to it you are. */
+.sl { border-top: 1px solid var(--line); padding: 11px 0; }
+.sl:first-of-type { border-top: none; }
+.sl .hd {
+  display: flex; align-items: center; gap: 9px;
+  font: 500 11.5px var(--mono); letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--ink-dim); cursor: pointer;
+}
+.sl .hd .grow { flex: 1; }
+.sl .hd .n { color: var(--ink-faint); text-transform: none; letter-spacing: 0; }
+.sl .bar { height: 3px; border-radius: 3px; background: rgba(255,255,255,.08); margin-top: 7px; overflow: hidden; }
+.sl .bar > i { display: block; height: 100%; background: var(--accent); }
+.sl.full .bar > i { background: var(--warn); }
+.sl.gone { opacity: 0.5; }
+.sl.gone .bar > i { background: var(--bad); }
+.sl.empty-slot .hd { color: var(--ink-faint); }
+.sl pre {
+  margin: 9px 0 0;
+  padding: 11px 12px;
+  background: rgba(0,0,0,.35);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font: 12px/1.55 var(--mono);
+  color: var(--ink-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow: auto;
+}
+.sl .keep {
+  font: 600 9.5px var(--mono); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* The retrieved chunks. Each one is the answer to "where did that come from". */
+.ck { border-top: 1px solid var(--line); padding: 10px 0; }
+.ck .meta { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.ck .cid {
+  font: 600 10px var(--mono); letter-spacing: .06em;
+  color: var(--ink-faint); background: rgba(255,255,255,.05);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+  cursor: pointer;
+}
+.ck .cid:hover { color: var(--ink); border-color: var(--line-bright); }
+.ck .t { color: var(--ink-dim); font-size: 12.5px; line-height: 1.5; }
+
+/* ----------------------------------------------------------- the source drawer */
+
+#srcDrawer {
+  position: fixed; inset: 0 0 0 auto; width: 420px; max-width: 92vw;
+  background: var(--panel-solid); border-left: 1px solid var(--line-bright);
+  z-index: 40; padding: 20px 22px; overflow: auto;
+  transform: translateX(100%); transition: transform 260ms var(--ease);
+  box-shadow: -30px 0 60px rgba(0,0,0,.5);
+}
+#srcDrawer.on { transform: none; }
+#srcDrawer .x {
+  position: absolute; top: 14px; right: 16px;
+  background: none; border: none; color: var(--ink-faint);
+  font-size: 20px; line-height: 1; cursor: pointer;
+}
+#srcDrawer .x:hover { color: var(--ink); }
+#srcDrawer dl { display: grid; grid-template-columns: 96px 1fr; gap: 7px 12px; margin: 14px 0 0; }
+#srcDrawer dt { font: 600 9.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); padding-top: 3px; }
+#srcDrawer dd { margin: 0; font-size: 13px; color: var(--ink-dim); line-height: 1.5; }
+
+@media (max-width: 1180px) {
+  .ci-controls { grid-template-columns: 1fr; }
+}

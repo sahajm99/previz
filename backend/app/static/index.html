@@ -1,565 +1,305 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Previs // AI Filmmaking Suite & Location Scout</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #0B0F17; --panel: #131A27; --panel2: #192335; --border: #243049;
-    --text: #F3F4F6; --muted: #9CA3AF; --accent: #6366F1; --accent-hover: #4F46E5;
-    --emerald: #10B981; --amber: #F59E0B;
-    --radius: 12px;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.55 'Inter', system-ui, -apple-system, sans-serif;
-  }
-  header {
-    padding: 20px 28px; border-bottom: 1px solid var(--border);
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  header h1 { margin: 0; font-size: 20px; letter-spacing: .5px; font-weight: 700; color: #fff; }
-  header .sub { color: var(--accent); font-size: 15px; font-weight: 500; margin-left: 8px; }
-  header .tag { color: var(--muted); font-size: 13px; }
-  header .status-badge {
-    font-size: 12.5px; color: var(--emerald); font-weight: 600;
-    background: rgba(16, 185, 129, 0.1); padding: 6px 14px;
-    border-radius: 20px; border: 1px solid var(--emerald);
-  }
-
-  .nav-tabs {
-    display: flex; gap: 12px; max-width: 1200px; margin: 24px auto 0; padding: 0 20px;
-    border-bottom: 1px solid var(--border);
-  }
-  .nav-tab {
-    background: transparent; border: none; color: var(--muted);
-    font-size: 15px; font-weight: 600; padding: 12px 20px; cursor: pointer;
-    border-bottom: 3px solid transparent; transition: all .2s;
-  }
-  .nav-tab:hover { color: #fff; }
-  .nav-tab.active { color: #fff; border-bottom-color: var(--accent); }
-
-  main { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
-
-  .card {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 20px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  }
-  label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
-  textarea, select, input[type="text"] {
-    width: 100%; background: var(--bg); color: var(--text);
-    border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
-    font: inherit; outline: none; transition: border-color .2s;
-  }
-  textarea { min-height: 92px; resize: vertical; }
-  textarea:focus, select:focus, input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
-  .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
-  .row { display: flex; gap: 12px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
-  button {
-    background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-    color: #fff; border: none; border-radius: 8px;
-    padding: 11px 24px; font: inherit; font-weight: 600; cursor: pointer;
-    transition: transform .1s, box-shadow .2s;
-  }
-  button:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4); }
-  button:disabled { opacity: .55; cursor: default; transform: none; box-shadow: none; }
-  .status { color: var(--muted); font-size: 14px; min-height: 20px; }
-
-  section h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: 34px 0 14px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
-  .shot { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .shot img { width: 100%; display: block; aspect-ratio: 16/10; object-fit: cover; background: #000; }
-  .shot .meta { padding: 14px; }
-  .shot .num { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .5px; }
-  .shot .desc { font-size: 13.5px; color: var(--text); margin-top: 4px; }
-
-  /* Location Scout Styles */
-  .search-group { display: flex; gap: 12px; margin-bottom: 16px; }
-  .filter-pills { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  .pill-select { width: auto; background: var(--bg); border-radius: 20px; padding: 6px 14px; font-size: 13px; }
-  .sub-tabs { display: flex; gap: 12px; margin: 24px 0 18px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
-  .sub-tab-btn { background: var(--panel); border: 1px solid var(--border); color: var(--muted); padding: 8px 16px; border-radius: 8px; font-size: 13.5px; cursor: pointer; }
-  .sub-tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-  .loc-card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-    overflow: hidden; display: flex; flex-direction: column; transition: all .2s;
-  }
-  .loc-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4); }
-  .loc-img-wrap { position: relative; height: 180px; background: #000; overflow: hidden; }
-  .loc-img { width: 100%; height: 100%; object-fit: cover; }
-  .vibe-badge { position: absolute; top: 12px; right: 12px; background: var(--emerald); color: #000; font-weight: 700; font-size: 12px; padding: 4px 10px; border-radius: 20px; }
-  .loc-body { padding: 16px; flex: 1; display: flex; flex-direction: column; }
-  .loc-name { font-size: 17px; font-weight: 700; margin: 0 0 4px; color: #fff; }
-  .loc-addr { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
-  .vibe-box { font-size: 13px; color: #D1D5DB; background: rgba(255, 255, 255, 0.03); padding: 10px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--accent); }
-  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
-  .tag { background: var(--bg); border: 1px solid var(--border); color: var(--muted); font-size: 11px; padding: 3px 8px; border-radius: 6px; }
-  .loc-actions { margin-top: auto; display: flex; gap: 8px; }
-  .btn-sm { flex: 1; padding: 7px 10px; font-size: 12.5px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--text); }
-  .btn-sm:hover { border-color: var(--accent); }
-  .btn-sm.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-
-  /* Scene Canvas Board */
-  .canvas-container {
-    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 24px; min-height: 520px; position: relative;
-    background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
-    background-size: 24px 24px;
-  }
-  .logistics-banner {
-    background: rgba(99, 102, 241, 0.1); border: 1px solid var(--accent); border-radius: 8px;
-    padding: 12px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; font-size: 13.5px;
-  }
-  .canvas-node {
-    background: var(--bg); border: 2px solid var(--border); border-radius: 10px;
-    width: 280px; padding: 14px; position: absolute; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    cursor: move; transition: border-color .2s;
-  }
-  .canvas-node:hover { border-color: var(--emerald); }
-  .node-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-  .node-id { font-weight: 700; color: var(--emerald); font-size: 12.5px; }
-
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
-    border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .hidden { display: none; }
-  .error { color: #F43F5E; }
-</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Magic Hour</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/bible.css">
 </head>
 <body>
-<header>
-  <div>
-    <h1>PREVIZ <span class="sub">// AI Filmmaking Suite</span></h1>
-    <span class="tag">Direct storyboards and scout real cinematic filming locations with multi-modal AI.</span>
-  </div>
-  <div class="status-badge">● Vertex AI Multi-Modal Engine Active</div>
-</header>
 
-<div class="nav-tabs">
-  <button class="nav-tab active" id="tabStoryBtn" onclick="switchMainTab('story')">🎬 Storyboard Generator</button>
-  <button class="nav-tab" id="tabScoutBtn" onclick="switchMainTab('scout')">📍 AI Location Scout &amp; Scene Canvas</button>
+<div id="field"></div>
+<canvas id="stars"></canvas>
+
+<div id="shell">
+
+  <!-- the rail. Six surfaces, one story bible. -->
+  <nav id="rail">
+    <div class="mark">M</div>
+    <button class="tab on" data-s="bible" style="--tint:var(--bible)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5.5A2 2 0 016 3.5h12v17H6a2 2 0 01-2-2z"/><path d="M8 7.5h7M8 11h7"/></svg>
+      <span class="name">Bible · the knowledge layer</span>
+    </button>
+    <button class="tab" data-s="script" style="--tint:var(--script)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 3.5h9l5 5v12H5z"/><path d="M14 3.5v5h5M8 13h8M8 16.5h5"/></svg>
+      <span class="name">Script · the screenplay</span>
+    </button>
+    <button class="tab" data-s="board" style="--tint:var(--board)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5.5" width="18" height="13" rx="1.6"/><path d="M3 9.5h18M8 5.5v4M16 5.5v4"/></svg>
+      <span class="name">Board · storyboards</span>
+    </button>
+    <button class="tab" data-s="cast" style="--tint:var(--cast)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 20.5c0-3.9 3.1-6.4 7-6.4s7 2.5 7 6.4"/></svg>
+      <span class="name">Cast · the 100 questions</span>
+    </button>
+    <button class="tab" data-s="scout" style="--tint:var(--scout)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21.5s7-6.3 7-11.4A7 7 0 005 10.1c0 5.1 7 11.4 7 11.4z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <span class="name">Scout · real locations</span>
+    </button>
+    <button class="tab" data-s="muse" style="--tint:var(--muse)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 9.6 9.6 0 01-2.7-.4L4 21l1.4-4.1A8.1 8.1 0 013 11.5a8.4 8.4 0 019-8.4 8.4 8.4 0 019 8.4z"/></svg>
+      <span class="name">Muse · talk it through</span>
+    </button>
+    <div class="spacer"></div>
+    <button class="tab" id="health">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l2.5-6 4 12L16 12h5"/></svg>
+      <span class="name" id="healthname">checking</span>
+    </button>
+  </nav>
+
+  <main id="work">
+    <header class="bar">
+      <h1 id="title">Magic Hour</h1>
+      <span class="sub" id="logline">loading the bible</span>
+      <span class="right">
+        <span class="chip mono" id="budget">· / ·</span>
+        <span class="chip mono" id="chunks">· chunks</span>
+      </span>
+    </header>
+
+    <!-- Bible ------------------------------------------------------------- -->
+    <section class="surface on" data-s="bible">
+      <div class="grid two" style="margin-bottom:14px">
+        <div class="panel lit pad">
+          <div class="eyebrow">Search the bible</div>
+          <input class="f" id="q" placeholder="what does Maya know about the night route">
+          <div class="tiny faint" style="margin-top:8px">
+            Hybrid: cosine over the chunks and token overlap, fused by reciprocal
+            rank. Canon outranks draft at equal relevance. Results land in the
+            Context tab.
+          </div>
+        </div>
+        <div class="panel pad">
+          <div class="eyebrow">The story</div>
+          <div id="spine" class="tiny muted"></div>
+        </div>
+      </div>
+      <!-- The Context Inspector. Every generated line in this product comes out
+           of one assembled Continuity Pack, so this is where a wrong line gets
+           traced to the fact behind it rather than argued about. -->
+      <div class="panel lit pad" style="margin-bottom:20px">
+        <div class="eyebrow">Context Inspector · the exact payload a model receives</div>
+        <div class="ci-controls">
+          <div>
+            <label class="lab">Scene</label>
+            <select class="f" id="ciScene"></select>
+          </div>
+          <div>
+            <label class="lab">Retrieval query</label>
+            <input class="f" id="ciQuery" placeholder="what does Ravi know about the route">
+          </div>
+          <button class="act" id="ciRun">Assemble</button>
+        </div>
+        <div class="ci-cast" id="ciCast"></div>
+        <div class="tiny faint" style="margin-top:9px">
+          Fixed slots, fixed budgets, assembled by one function for every call in
+          the product. On overflow the pack drops turn, then local, then
+          retrieved, and never style or cast, because those are the identity.
+          Click a slot to read it verbatim, and a chunk id to open the row it came
+          from.
+        </div>
+        <div id="ciOut"></div>
+      </div>
+
+      <div class="eyebrow">Scenes</div>
+      <div class="grid cards" id="sceneCards" style="margin-bottom:20px"></div>
+      <div class="eyebrow">Characters</div>
+      <div class="grid cards" id="charCards" style="margin-bottom:20px"></div>
+      <div class="eyebrow">Locations</div>
+      <div class="grid cards" id="bibleLocs"></div>
+    </section>
+
+    <!-- Script ------------------------------------------------------------ -->
+    <section class="surface" data-s="script">
+      <div class="panel pad" style="margin-bottom:14px">
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <div style="width:210px">
+            <label class="lab">Scene</label>
+            <select class="f" id="scScene"></select>
+          </div>
+          <div style="flex:1">
+            <label class="lab">What this beat has to do · optional</label>
+            <input class="f" id="scIntent" placeholder="he still does not understand what he has lost">
+          </div>
+          <button class="act" id="btnAction">Write action</button>
+          <button class="act primary" id="btnDialogue">Write dialogue</button>
+          <button class="act" id="btnSupervise">Supervise</button>
+        </div>
+        <div class="tiny faint" style="margin-top:9px">
+          One sub-agent per character, each built from its own Voice Card verbatim
+          and bounded by what that character knows as of this scene. Every line is
+          scored against their voice fingerprint.
+        </div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 300px">
+        <div>
+          <div class="eyebrow">Screenplay</div>
+          <div class="script" id="pages"></div>
+        </div>
+        <div>
+          <div class="eyebrow">Lines and their scores</div>
+          <div id="lines"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Board ------------------------------------------------------------- -->
+    <section class="surface" data-s="board">
+      <div class="panel pad" style="margin-bottom:14px">
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <div style="width:210px">
+            <label class="lab">Scene</label>
+            <select class="f" id="bdScene"></select>
+          </div>
+          <div style="width:110px">
+            <label class="lab">Shots</label>
+            <input class="f" id="bdCount" type="number" value="6" min="1" max="12">
+          </div>
+          <div style="width:150px">
+            <label class="lab">Style</label>
+            <select class="f" id="bdStyle">
+              <option value="realistic">realistic</option>
+              <option value="animation">animation</option>
+              <option value="pencil">pencil</option>
+            </select>
+          </div>
+          <button class="act" id="btnPlan">Plan shots</button>
+          <button class="act primary" id="btnRender">Render board</button>
+        </div>
+        <div class="tiny faint" style="margin-top:9px">
+          All the deciding happens in text before any image is paid for. Each
+          frame is conditioned on the locked reference sheet and the Identity Card
+          verbatim, then scored against the face fingerprint.
+        </div>
+      </div>
+      <div class="grid frames" id="board"></div>
+    </section>
+
+    <!-- Cast -------------------------------------------------------------- -->
+    <section class="surface" data-s="cast">
+      <div class="grid" style="grid-template-columns:290px 1fr">
+        <div>
+          <div class="eyebrow">Characters</div>
+          <div id="castList"></div>
+          <div class="panel pad" style="margin-top:12px">
+            <label class="lab">Add a character</label>
+            <input class="f" id="newName" placeholder="name">
+            <button class="act" id="btnAddChar" style="margin-top:8px;width:100%">Create</button>
+          </div>
+        </div>
+        <div>
+          <div class="eyebrow" id="castWho">Select a character</div>
+          <div id="castDetail"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Scout ------------------------------------------------------------- -->
+    <section class="surface" data-s="scout">
+      <div class="panel pad" style="margin-bottom:14px">
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px">
+            <label class="lab">What the scene needs (Natural Language Vibe)</label>
+            <input class="f" id="scoutNeed" placeholder="a working bus depot with a yard you can shoot at night">
+          </div>
+          <div style="width:150px">
+            <label class="lab">Region</label>
+            <select class="f" id="scoutRegion" style="width:100%;height:32px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:0 8px">
+              <option value="New York, NY">New York, NY</option>
+              <option value="Los Angeles, CA">Los Angeles, CA</option>
+              <option value="London, UK">London, UK</option>
+              <option value="Tokyo, Japan">Tokyo, Japan</option>
+            </select>
+          </div>
+          <div style="width:140px">
+            <label class="lab">Budget Tier</label>
+            <select class="f" id="scoutBudget" style="width:100%;height:32px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:0 8px">
+              <option value="Low">&lt; $5k/day (Low)</option>
+              <option value="Free">Free / Student</option>
+              <option value="High">&gt; $5k/day (High)</option>
+            </select>
+          </div>
+          <div style="width:130px">
+            <label class="lab">Time of Day</label>
+            <select class="f" id="scoutTime" style="width:100%;height:32px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:0 8px">
+              <option value="Night">Night / Neon</option>
+              <option value="Day">Day / Sunlight</option>
+              <option value="Magic Hour">Magic Hour</option>
+            </select>
+          </div>
+          <div style="width:110px">
+            <label class="lab">Attach to</label>
+            <select class="f" id="scoutScene"></select>
+          </div>
+          <button class="act primary" id="btnScout">Scout Vibe</button>
+        </div>
+        <div class="tiny faint" style="margin-top:9px;display:flex;justify-content:space-between;align-items:center">
+          <span>Powered by Gemini 2.5 Vibe Match & Places API. Evaluates architectural aesthetic, permit requirements, and logistics.</span>
+          <span id="scoutStatus" style="color:var(--emerald);font-weight:600"></span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px">
+        <button class="act primary" id="subAllBtn" onclick="switchScoutSub('all')" style="font-size:12px;padding:5px 12px">Scouted Locations (<span id="countAll">0</span>)</button>
+        <button class="act" id="subShortBtn" onclick="switchScoutSub('shortlist')" style="font-size:12px;padding:5px 12px">★ Shortlist (<span id="countShort">0</span>)</button>
+        <button class="act" id="subCanvasBtn" onclick="switchScoutSub('canvas')" style="font-size:12px;padding:5px 12px">📍 Interactive Scene Canvas</button>
+      </div>
+
+      <div class="grid cards" id="locs"></div>
+      <div id="canvasView" style="display:none" class="panel pad">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:10px">
+          <div><strong style="color:var(--scout)">📍 Production Logistics Summary:</strong> <span id="canvasLogisticsText">Select locations and connect scenes to calculate routing matrix.</span></div>
+          <div style="display:flex;gap:8px">
+            <button class="act primary" onclick="openCanvasRouteOnMaps()" style="font-size:11px;padding:4px 10px;font-weight:bold">🗺️ Open Route in Google Maps</button>
+            <button class="act" onclick="loadScoutCanvas()" style="font-size:11px;padding:4px 10px">↻ Refresh Canvas</button>
+          </div>
+        </div>
+        <div id="canvasBoardArea" style="position:relative;min-height:460px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:hidden;padding:16px"></div>
+      </div>
+    </section>
+
+    <!-- Muse -------------------------------------------------------------- -->
+    <section class="surface" data-s="muse">
+      <div class="empty">
+        Muse is not wired yet. The transport seam is specified: one
+        <span class="mono">POST /api/muse/turn</span> taking <span class="mono">{text}</span>
+        and returning the same SSE envelope every other surface uses, so adding it
+        touches no agent, tool or context code.
+      </div>
+    </section>
+  </main>
+
+  <!-- the inspector ----------------------------------------------------- -->
+  <aside id="inspector">
+    <div id="itabs">
+      <button class="on" data-i="ctx">Context</button>
+      <button data-i="trace">Trace</button>
+      <button data-i="canon">Canon</button>
+    </div>
+    <div class="ipane on" data-i="ctx">
+      <div class="eyebrow">Continuity Pack</div>
+      <div id="slots" class="faint tiny">Run anything and the exact context it received appears here.</div>
+      <div class="eyebrow" style="margin-top:18px">Retrieved</div>
+      <div id="hits" class="faint tiny">No search yet.</div>
+    </div>
+    <div class="ipane" data-i="trace">
+      <div class="eyebrow">Live agent trace</div>
+      <div id="trace" class="faint tiny">Idle.</div>
+    </div>
+    <div class="ipane" data-i="canon">
+      <div class="eyebrow">Pending proposals</div>
+      <div class="tiny faint" style="margin-bottom:10px">
+        Agents cannot write canon. They propose, with the reasoning that produced
+        it, and a person promotes.
+      </div>
+      <div id="canon"></div>
+    </div>
+  </aside>
+
 </div>
 
-<main>
-  <!-- STORYBOARD TAB -->
-  <div id="storyboardView">
-    <div class="card">
-      <label for="scene">Scene Description</label>
-      <textarea id="scene">INT. NOIR BAR - NIGHT. A lone detective nurses a whiskey as rain streaks the window. The door opens; a woman in a red dress steps into the smoky light.</textarea>
-
-      <div class="controls">
-        <div>
-          <label>Genre</label>
-          <select id="genre">
-            <option>noir</option><option>thriller</option><option>drama</option>
-            <option>sci-fi</option><option>horror</option><option>western</option>
-            <option>romance</option><option>action</option><option>fantasy</option>
-          </select>
-        </div>
-        <div>
-          <label>Visual style</label>
-          <select id="visual_style">
-            <option>photorealistic cinematic</option>
-            <option>black and white film grain</option>
-            <option>vintage technicolor</option>
-            <option>graphic novel ink</option>
-            <option>anime</option>
-            <option>cyberpunk neon</option>
-          </select>
-        </div>
-        <div>
-          <label>Mood</label>
-          <select id="mood">
-            <option>tense</option><option>dreamy</option><option>ominous</option>
-            <option>melancholic</option><option>epic</option><option>intimate</option><option>joyful</option>
-          </select>
-        </div>
-        <div>
-          <label>Era</label>
-          <select id="era">
-            <option>present day</option><option>1940s</option><option>1970s</option>
-            <option>near future</option><option>victorian</option><option>medieval</option>
-          </select>
-        </div>
-        <div>
-          <label>Palette</label>
-          <select id="color_palette">
-            <option>natural</option><option>high-contrast monochrome</option>
-            <option>warm amber</option><option>cool teal</option>
-            <option>desaturated</option><option>vibrant</option>
-          </select>
-        </div>
-        <div>
-          <label>Aspect</label>
-          <select id="aspect_ratio">
-            <option>16:9</option><option>2.39:1</option><option>4:3</option><option>1:1</option><option>9:16</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="row">
-        <button id="go">Generate Storyboard</button>
-        <span class="status" id="status"></span>
-      </div>
-    </div>
-
-    <section id="shotsSection" class="hidden">
-      <h2>Generated Storyboard Frames</h2>
-      <div class="grid" id="shots"></div>
-    </section>
-  </div>
-
-  <!-- LOCATION SCOUT TAB -->
-  <div id="scoutView" class="hidden">
-    <div class="card" style="margin-bottom: 24px;">
-      <label>Natural Language Vibe Scout</label>
-      <div class="search-group">
-        <input type="text" id="vibeQuery" value="Moody 1980s neon-lit diner with red vinyl booths near downtown NYC under $5k/day" placeholder="Describe architectural texture, lighting, era, or logistics needed..." />
-        <button id="scoutBtn" onclick="runScout()">Scout Locations</button>
-      </div>
-
-      <div class="filter-pills">
-        <span style="font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase;">Filters:</span>
-        <select class="pill-select" id="scoutRegion">
-          <option value="New York, NY">Region: New York, NY</option>
-          <option value="Los Angeles, CA">Region: Los Angeles, CA</option>
-          <option value="London, UK">Region: London, UK</option>
-          <option value="Tokyo, Japan">Region: Tokyo, Japan</option>
-        </select>
-        <select class="pill-select" id="scoutBudget">
-          <option value="Low">Budget: Low (&lt; $5k/day)</option>
-          <option value="Free">Budget: Free / Student</option>
-          <option value="High">Budget: High (&gt; $5k/day)</option>
-        </select>
-        <select class="pill-select" id="scoutTime">
-          <option value="Night">Time: Night / Neon</option>
-          <option value="Day">Time: Day / Sunlight</option>
-          <option value="Magic Hour">Time: Magic Hour / Sunset</option>
-        </select>
-      </div>
-      <div class="status" id="scoutStatus" style="margin-top:10px;"></div>
-    </div>
-
-    <div class="sub-tabs">
-      <button class="sub-tab-btn active" id="subAllBtn" onclick="switchSubTab('all')">Scouted Locations (<span id="countAll">0</span>)</button>
-      <button class="sub-tab-btn" id="subShortBtn" onclick="switchSubTab('shortlist')">★ Shortlist (<span id="countShort">0</span>)</button>
-      <button class="sub-tab-btn" id="subCanvasBtn" onclick="switchSubTab('canvas')">📍 Interactive Scene Canvas</button>
-    </div>
-
-    <div class="grid" id="scoutGrid"></div>
-    <div class="canvas-container hidden" id="canvasView">
-      <div class="logistics-banner" id="logisticsBanner">
-        <div><strong>Production Logistics Summary:</strong> Loading route matrix...</div>
-      </div>
-      <div id="canvasBoardArea" style="position:relative; min-height:440px;"></div>
-    </div>
-  </div>
-</main>
-
-<script>
-  const $ = (id) => document.getElementById(id);
-  const btn = $("go"), status = $("status");
-  const getSessionId = () => {
-    let sid = localStorage.getItem("previz_session_id");
-    if (!sid) {
-      sid = "judge-" + Math.random().toString(36).substring(2, 9);
-      localStorage.setItem("previz_session_id", sid);
-    }
-    return sid;
-  };
-  const fetchHeaders = () => ({ "Content-Type": "application/json", "X-Session-ID": getSessionId() });
-  let currentLocations = [];
-  let shortlistLocations = [];
-  let currentSubTab = 'all';
-
-  function switchMainTab(tab) {
-    if (tab === 'story') {
-      $("storyboardView").classList.remove("hidden");
-      $("scoutView").classList.add("hidden");
-      $("tabStoryBtn").classList.add("active");
-      $("tabScoutBtn").classList.remove("active");
-    } else {
-      $("storyboardView").classList.add("hidden");
-      $("scoutView").classList.remove("hidden");
-      $("tabStoryBtn").classList.remove("active");
-      $("tabScoutBtn").classList.add("active");
-      if (currentLocations.length === 0) loadAllLocations();
-      loadShortlist();
-    }
-  }
-
-  function switchSubTab(sub) {
-    currentSubTab = sub;
-    $("subAllBtn").classList.toggle("active", sub === 'all');
-    $("subShortBtn").classList.toggle("active", sub === 'shortlist');
-    $("subCanvasBtn").classList.toggle("active", sub === 'canvas');
-
-    if (sub === 'canvas') {
-      $("scoutGrid").classList.add("hidden");
-      $("canvasView").classList.remove("hidden");
-      loadCanvas();
-    } else {
-      $("scoutGrid").classList.remove("hidden");
-      $("canvasView").classList.add("hidden");
-      renderLocations(sub === 'all' ? currentLocations : shortlistLocations);
-    }
-  }
-
-  async function loadAllLocations() {
-    try {
-      const res = await fetch("/api/v1/locations/all", { headers: { "X-Session-ID": getSessionId() } });
-      if (res.ok) {
-        currentLocations = await res.json();
-        $("countAll").textContent = currentLocations.length;
-        if (currentSubTab === 'all') renderLocations(currentLocations);
-      }
-    } catch (e) { console.error(e); }
-  }
-
-  async function loadShortlist() {
-    try {
-      const res = await fetch("/api/v1/locations/shortlist", { headers: { "X-Session-ID": getSessionId() } });
-      if (res.ok) {
-        shortlistLocations = await res.json();
-        $("countShort").textContent = shortlistLocations.length;
-        if (currentSubTab === 'shortlist') renderLocations(shortlistLocations);
-      }
-    } catch (e) { console.error(e); }
-  }
-
-  async function runScout() {
-    const query = $("vibeQuery").value.trim();
-    if (!query) return;
-    const scoutBtn = $("scoutBtn"), scoutStatus = $("scoutStatus");
-    scoutBtn.disabled = true;
-    scoutStatus.innerHTML = '<span class="spinner"></span>Vertex AI location scouting and vibe matching in progress...';
-
-    try {
-      const res = await fetch("/api/v1/locations/search", {
-        method: "POST",
-        headers: fetchHeaders(),
-        body: JSON.stringify({
-          query,
-          region: $("scoutRegion").value,
-          budget_tier: $("scoutBudget").value,
-          time_of_day: $("scoutTime").value,
-          limit: 6
-        })
-      });
-      if (res.ok) {
-        currentLocations = await res.json();
-        $("countAll").textContent = currentLocations.length;
-        switchSubTab('all');
-        scoutStatus.textContent = `Found ${currentLocations.length} cinematic locations matching your vibe.`;
-      }
-    } catch (e) {
-      scoutStatus.textContent = "Scouting failed: " + e.message;
-    } finally {
-      scoutBtn.disabled = false;
-    }
-  }
-
-  async function toggleShortlist(loc, current) {
-    try {
-      const res = await fetch("/api/v1/locations/shortlist", {
-        method: "POST",
-        headers: fetchHeaders(),
-        body: JSON.stringify({ location: loc, shortlisted: !current })
-      });
-      if (res.ok) {
-        await loadShortlist();
-        await loadAllLocations();
-      }
-    } catch (e) { console.error(e); }
-  }
-
-  async function findSimilar(loc) {
-    const scoutStatus = $("scoutStatus");
-    scoutStatus.innerHTML = '<span class="spinner"></span>Running vector cosine similarity search over visual embeddings...';
-    try {
-      const res = await fetch("/api/v1/locations/similar", {
-        method: "POST",
-        headers: fetchHeaders(),
-        body: JSON.stringify({ place_id: loc.id || loc.name, limit: 3 })
-      });
-      if (res.ok) {
-        currentLocations = await res.json();
-        $("countAll").textContent = currentLocations.length;
-        switchSubTab('all');
-        scoutStatus.textContent = `Showing top 3 locations similar to "${loc.name}".`;
-      }
-    } catch (e) { console.error(e); }
-  }
-
-  async function addToCanvas(loc) {
-    try {
-      const res = await fetch("/api/v1/locations/canvas", { headers: { "X-Session-ID": getSessionId() } });
-      if (res.ok) {
-        const board = await res.json();
-        if (board.nodes && board.nodes.length > 0) {
-          board.nodes[0].location_id = loc.id || loc.name;
-          board.nodes[0].location = loc;
-          await fetch("/api/v1/locations/canvas", {
-            method: "POST",
-            headers: fetchHeaders(),
-            body: JSON.stringify(board)
-          });
-          switchSubTab('canvas');
-        }
-      }
-    } catch (e) { console.error(e); }
-  }
-
-  function renderLocations(locs) {
-    const grid = $("scoutGrid");
-    grid.innerHTML = "";
-    if (!locs || locs.length === 0) {
-      grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:60px 20px; color:#9CA3AF;"><h3>No locations found</h3><p>Try searching for a different cinematic vibe or adjusting your filters.</p></div>';
-      return;
-    }
-
-    const shortIds = new Set(shortlistLocations.map(l => l.id || l.name));
-
-    locs.forEach(loc => {
-      const id = loc.id || loc.name;
-      const isShort = shortIds.has(id);
-      const score = loc.vibe_match_score ? Math.round(loc.vibe_match_score * 100) : 88;
-      const img = loc.photo_url || loc.street_view_url || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
-
-      const card = document.createElement("div");
-      card.className = "loc-card";
-      card.innerHTML = `
-        <div class="loc-img-wrap">
-          <img src="${img}" alt="${loc.name}" class="loc-img" />
-          <div class="vibe-badge">${score}% Vibe Match</div>
-        </div>
-        <div class="loc-body">
-          <div class="loc-name">${loc.name}</div>
-          <div class="loc-addr">${loc.address}</div>
-          ${loc.vibe_reasoning ? `<div class="vibe-box"><strong>AI Analysis:</strong> ${loc.vibe_reasoning}</div>` : ''}
-          <div class="tag-list">
-            <span class="tag">Budget: ${loc.budget_tier}</span>
-            <span class="tag">${loc.permit_status}</span>
-            ${(loc.place_types||[]).slice(0,2).map(t => `<span class="tag">${t.replace('_',' ')}</span>`).join('')}
-          </div>
-          <div class="loc-actions">
-            <button class="btn-sm ${isShort ? 'primary' : ''}" onclick='toggleShortlist(${JSON.stringify(loc)}, ${isShort})'>${isShort ? '★ Shortlisted' : '☆ Shortlist'}</button>
-            <button class="btn-sm" onclick='findSimilar(${JSON.stringify(loc)})'>Similar</button>
-            <button class="btn-sm primary" onclick='addToCanvas(${JSON.stringify(loc)})'>+ Canvas</button>
-          </div>
-        </div>
-      `;
-      grid.appendChild(card);
-    });
-  }
-
-  async function loadCanvas() {
-    try {
-      const res = await fetch("/api/v1/locations/canvas", { headers: { "X-Session-ID": getSessionId() } });
-      if (res.ok) {
-        const board = await res.json();
-        const area = $("canvasBoardArea");
-        area.innerHTML = "";
-
-        const summ = board.logistics_summary || {};
-        $("logisticsBanner").innerHTML = `
-          <div><strong>Production Logistics Summary:</strong> ${summ.notes || 'Calculated optimal crew routing.'}</div>
-          <div style="display:flex; gap:16px;">
-            <span>📍 <strong>${summ.total_scenes || board.nodes.length}</strong> Scenes</span>
-            <span>🚗 <strong>~${summ.est_travel_time_mins || 28} mins</strong> Total Travel Time</span>
-          </div>
-        `;
-
-        board.nodes.forEach(node => {
-          const locName = node.location?.name || 'Unassigned Location';
-          const locAddr = node.location?.address || 'Click + Canvas on a location to attach';
-          const photoUrl = node.location?.photo_url;
-
-          const el = document.createElement("div");
-          el.className = "canvas-node";
-          el.style.left = `${node.x}px`;
-          el.style.top = `${node.y}px`;
-          el.innerHTML = `
-            <div class="node-head">
-              <span class="node-id">${node.scene_id}: ${node.scene_name}</span>
-              <span style="font-size:11px; background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">☀ ${node.time_of_day}</span>
-            </div>
-            ${photoUrl ? `<img src="${photoUrl}" style="width:100%; height:110px; object-fit:cover; border-radius:6px; margin-bottom:8px;" />` : ''}
-            <div style="font-weight:600; color:#fff; font-size:14px; margin-bottom:4px;">${locName}</div>
-            <div style="color:var(--muted); font-size:12px; margin-bottom:8px;">${locAddr}</div>
-            ${node.notes ? `<div style="font-size:12px; background:rgba(255,255,255,0.03); padding:6px; border-radius:4px; color:#D1D5DB;">📝 ${node.notes}</div>` : ''}
-          `;
-          area.appendChild(el);
-        });
-
-        (board.connections || []).forEach(conn => {
-          const tag = document.createElement("div");
-          tag.style.cssText = "position:absolute; bottom:16px; right:16px; background:rgba(16,185,129,0.15); border:1px solid #10B981; padding:8px 14px; border-radius:20px; font-size:13px; color:#10B981; font-weight:600;";
-          tag.innerHTML = `🚙 Route: ${conn.from_node} ➔ ${conn.to_node} (${conn.travel_time_mins || 28} mins / ${conn.distance_km || 9.4} km)`;
-          area.appendChild(tag);
-        });
-      }
-    } catch (e) { console.error(e); }
-  }
-
-  function style() {
-    return {
-      genre: $("genre").value,
-      visual_style: $("visual_style").value,
-      mood: $("mood").value,
-      era: $("era").value,
-      color_palette: $("color_palette").value,
-      aspect_ratio: $("aspect_ratio").value,
-    };
-  }
-
-  async function generate() {
-    const scene = $("scene").value.trim();
-    if (!scene) { status.textContent = "Enter a scene first."; return; }
-
-    btn.disabled = true;
-    status.className = "status";
-    status.innerHTML = '<span class="spinner"></span>Directing… planning shots and rendering frames (~15–25s)';
-    $("shotsSection").classList.add("hidden");
-    $("shots").innerHTML = "";
-
-    try {
-      const res = await fetch("/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scene, style: style() }),
-      });
-      if (!res.ok) throw new Error("Server error " + res.status);
-      const data = await res.json();
-
-      for (const s of data.shots) {
-        const el = document.createElement("div");
-        el.className = "shot";
-        el.innerHTML =
-          `<img src="${s.image_data_url}" alt="shot ${s.index + 1}" />
-           <div class="meta"><div class="num">SHOT ${s.index + 1}</div>
-           <div class="desc"></div></div>`;
-        el.querySelector(".desc").textContent = s.description;
-        $("shots").appendChild(el);
-      }
-      $("shotsSection").classList.remove("hidden");
-      status.textContent = `Done — ${data.shots.length} frames generated.`;
-    } catch (e) {
-      status.className = "status error";
-      status.textContent = "Failed: " + e.message;
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
-  btn.addEventListener("click", generate);
-</script>
+<script src="/static/app.js"></script>
+<script src="/static/bible.js"></script>
 </body>
 </html>

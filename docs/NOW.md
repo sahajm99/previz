@@ -110,3 +110,45 @@ allowed to fail, not the demo.
   still shows a full board.
 - **The lab project expires today.** Do not put anything in it we cannot lose.
 - Hard cap on image generation per story so a loop bug cannot eat the budget.
+
+---
+
+## Working in parallel without merge hell
+
+Five people on five branches. The rules exist because a conflict at 15:20 is
+unrecoverable.
+
+### The one rule
+
+**Never edit `backend/app/main.py`.** Routers in `backend/app/routers/` are
+auto-discovered. Your tab is one file in that package and nothing else.
+
+| Branch | Your file, yours alone | Build on this. Do not rewrite it. |
+|---|---|---|
+| `feat/board` · Sahaj | `app/routers/board.py` | `app.consistency`: `compile_identity_card` → `generate_reference_sheet` → `fingerprint` → `generate_shot_with_referee`. The last returns `(frame_bytes, {name: Verdict}, attempts)`; `Verdict.score` is the number to show on each frame. |
+| `feat/characters` · kk | `app/routers/characters.py` | `data/seed/character_questions.json`. Ask the 12 `is_core` first. Emit `{question_text: answer}`, which is the only input both card compilers need. |
+| `feat/locations` · gaurav | `app/routers/locations.py` | `app.tools.locations.find_locations` is already correct. Add Places Photos and **cache the images to disk**, because Places photo URLs expire. |
+| `feat/story` · Sampreeth | `app/routers/story.py` | `app.voice`: `compile_voice_card`, `write_exchange`, `referee_line`. **These are built and verified. Wrap them, do not reimplement them.** |
+| `feat/knowledge` · Sampreeth | `app/routers/knowledge.py` | Nothing exists yet. This owns the store that supplies `voice.write_exchange(knows=...)`. |
+| `feat/frontend` | `app/static/` only | Call `/api/<tab>/…`. Never import from `app/` directly. |
+
+### Shared files: change these only by asking in chat first
+
+`app/main.py` · `app/config.py` · `app/gemini_client.py` · `app/models.py` ·
+`requirements.txt` · `app/consistency.py` · `app/voice.py`
+
+If you need a new setting or dependency, say so in chat and one person adds it.
+Two people adding a line to `requirements.txt` is a conflict for no reason.
+
+### Merge discipline
+
+Rebase on `main` before you push, every time:
+
+    git fetch origin && git rebase origin/main && git push
+
+Merge early and often. Five branches merging at once in the last ten minutes is
+how this goes wrong. A half finished tab on `main` behind a disabled button is
+worth more than a perfect tab that never merges.
+
+Your router returning `{"ready": false}` is fine. It means the app still boots and
+everyone else is unblocked.

@@ -23,7 +23,7 @@ from app.services.google_maps import (
     get_street_view_url,
     search_text,
 )
-from app.services.location_store import store
+from app.services.location_store import get_store, store
 
 
 def _generate_synthetic_embedding(text: str, dims: int = 768) -> list[float]:
@@ -130,7 +130,7 @@ class LocationScoutAgent:
 
         return round(score, 2), " ".join(reasons)
 
-    def scout_locations(self, req: VibeSearchRequest, fallback_to_seed: bool = True) -> list[LocationSuggestion]:
+    def scout_locations(self, req: VibeSearchRequest, fallback_to_seed: bool = True, session_id: str | None = None) -> list[LocationSuggestion]:
         """Execute autonomous scouting loop: parse -> search -> enrich & score -> cache -> store."""
         parsed = self._parse_query_with_gemini(req)
         query_str = parsed.get("search_query", req.query)
@@ -143,7 +143,7 @@ class LocationScoutAgent:
         if not places:
             if not fallback_to_seed:
                 return []
-            all_locs = store.get_all()
+            all_locs = get_store(session_id).get_all()
             q_terms = set(re.findall(r"\w+", req.query.lower()))
             matched = []
             for loc in all_locs:
@@ -210,7 +210,7 @@ class LocationScoutAgent:
                 street_view_url=sv_url,
                 embedding=emb,
             )
-            store.save_location(loc)
+            get_store(session_id).save_location(loc)
             results.append(loc)
 
         return results

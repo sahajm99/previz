@@ -1,0 +1,63 @@
+{
+  "_comment": [
+    "Relationship and implication edges for the seeded story, The Night Route.",
+    "Characters are named rather than keyed by id, because ids are generated at",
+    "startup. app/graph.py resolves them through Story.character_by_name.",
+    "",
+    "`knows` edges are NOT here. They live in app/seed.py KNOWS, which stays the",
+    "one writer of what a character has been told, and graph.py lifts them into",
+    "edges on first read.",
+    "",
+    "An `implies` edge is fact to fact: a character who has been told the source",
+    "fact can reason to the target, so the horizon has to carry both. That is why",
+    "Maya can talk around the reassignment in scene 1 without anyone telling her."
+  ],
+
+  "relations": [
+    {"src": "Maya Raghavan", "kind": "met", "dst": "Ravi Menon",
+     "since_scene": 1,
+     "note": "Nine years on the same shift. She signs his sheet every night."},
+
+    {"src": "Maya Raghavan", "kind": "lying_to", "dst": "Ravi Menon",
+     "since_scene": 1,
+     "note": "By omission. She has the route sheet and she does not mention it."},
+
+    {"src": "Ravi Menon", "kind": "wants_from", "dst": "Maya Raghavan",
+     "since_scene": 1,
+     "note": "To be told things straight, and early, the way he tells her."},
+
+    {"src": "Maya Raghavan", "kind": "wants_from", "dst": "Ravi Menon",
+     "since_scene": 3,
+     "note": "That he not ask her directly, so she does not have to answer."},
+
+    {"src": "Maya Raghavan", "kind": "fears", "dst_fact":
+      "That being in control of everything is not the same as being able to stop anything.",
+     "since_scene": 1},
+
+    {"src": "Ravi Menon", "kind": "fears", "dst_fact": "Sitting still.",
+     "since_scene": 1},
+
+    {"src": "Ravi Menon", "kind": "loves", "dst_fact":
+      "His wife, who packs him more food than he can eat.",
+     "since_scene": 1},
+
+    {"src": "Maya Raghavan", "kind": "works_for", "dst_fact":
+      "The depot, which is cutting the route to make its numbers.",
+     "since_scene": 1,
+     "note": "She is the one who has to make the cut look like a schedule."}
+  ],
+
+  "implies": [
+    {"src_fact": "The night route is being cut at the end of the month.",
+     "dst_fact": "The depot is losing a night shift, so a driver is being moved off it.",
+     "since_scene": 1},
+
+    {"src_fact": "The depot is losing a night shift, so a driver is being moved off it.",
+     "dst_fact": "Twenty-two years without an accident does not protect the driver who has them.",
+     "since_scene": 1},
+
+    {"src_fact": "She was on shift and did not answer the phone the night her mother died.",
+     "dst_fact": "She believes being present is worth more than being right, and she has never said so out loud.",
+     "since_scene": 1}
+  ]
+}

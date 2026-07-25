@@ -23,9 +23,12 @@ router = APIRouter(prefix="/api/v1/locations", tags=["Location Scouting & Scene 
 
 
 @router.post("/search", response_model=list[LocationSuggestion])
-def search_locations(req: VibeSearchRequest) -> list[LocationSuggestion]:
+def search_locations(
+    req: VibeSearchRequest,
+    x_session_id: str | None = Header(None, alias="X-Session-ID"),
+) -> list[LocationSuggestion]:
     """Execute natural language vibe search and return scored location suggestions."""
-    return scout_agent.scout_locations(req)
+    return scout_agent.scout_locations(req, session_id=x_session_id)
 
 
 @router.post("/similar", response_model=list[LocationSuggestion])
@@ -66,7 +69,36 @@ def toggle_shortlist(
     x_session_id: str | None = Header(None, alias="X-Session-ID"),
 ) -> LocationSuggestion:
     """Add or remove a location from the saved shortlist."""
-    return get_store(x_session_id).toggle_shortlist(req.location, req.shortlisted)
+    res = get_store(x_session_id).toggle_shortlist(req.location, req.shortlisted)
+    try:
+        from app.store import store
+        st = store.story(None)
+        if res.id in st.locations:
+            st.locations[res.id].shortlisted = res.shortlisted
+        else:
+            loc = store.add_location(
+                None,
+                name=res.name,
+                address=res.address,
+                lat=res.lat,
+                lng=res.lng,
+                maps_url=res.maps_url,
+                notes=res.notes or "",
+                photos=[{"url": res.photo_url}] if getattr(res, "photo_url", None) else [],
+                budget_tier=getattr(res, "budget_tier", "Low"),
+                permit_status=getattr(res, "permit_status", "Required"),
+                vibe_match_score=getattr(res, "vibe_match_score", None),
+                vibe_reasoning=getattr(res, "vibe_reasoning", None),
+                street_view_url=getattr(res, "street_view_url", None),
+                embedding=getattr(res, "embedding", None),
+                similar_place_ids=getattr(res, "similar_place_ids", []),
+            )
+            loc.id = res.id
+            loc.shortlisted = res.shortlisted
+            st.locations[res.id] = loc
+    except Exception:
+        pass
+    return res
 
 
 @router.get("/canvas", response_model=CanvasBoard)

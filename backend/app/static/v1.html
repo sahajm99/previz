@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Previs — AI Storyboards</title>
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #14171c; --panel2: #191d23; --border: #262b33;
+    --text: #e7e9ec; --muted: #9aa3af; --accent: #e0a066; --accent-press: #cf8a4e;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 22px 28px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 14px;
+  }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: .5px; font-weight: 650; }
+  header .tag { color: var(--muted); font-size: 13px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px;
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .5px; }
+  textarea, select {
+    width: 100%; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+    font: inherit; outline: none;
+  }
+  textarea { min-height: 92px; resize: vertical; }
+  textarea:focus, select:focus { border-color: var(--accent); }
+  .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+  .row { display: flex; gap: 12px; align-items: flex-end; margin-top: 16px; flex-wrap: wrap; }
+  button {
+    background: var(--accent); color: #1a1204; border: none; border-radius: 8px;
+    padding: 11px 22px; font: inherit; font-weight: 650; cursor: pointer;
+  }
+  button:hover { background: var(--accent-press); }
+  button:disabled { opacity: .55; cursor: default; }
+  .status { color: var(--muted); font-size: 14px; min-height: 20px; }
+
+  section h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: 34px 0 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .shot { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .shot img { width: 100%; display: block; aspect-ratio: 16/10; object-fit: cover; background: #000; }
+  .shot .meta { padding: 12px 14px; }
+  .shot .num { color: var(--accent); font-size: 12px; font-weight: 650; letter-spacing: .5px; }
+  .shot .desc { font-size: 13.5px; color: var(--text); margin-top: 4px; }
+
+  .loc { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .loc .name { font-weight: 600; }
+  .loc .addr { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+  .loc a { color: var(--accent); font-size: 13px; text-decoration: none; }
+  .loc a:hover { text-decoration: underline; }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none; }
+  .error { color: #e06a5a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PREVIS</h1>
+  <span class="tag">Type a scene → get a storyboard + real filming locations.</span>
+</header>
+
+<main>
+  <div class="card">
+    <label for="scene">Scene</label>
+    <textarea id="scene">INT. NOIR BAR - NIGHT. A lone detective nurses a whiskey as rain streaks the window. The door opens; a woman in a red dress steps into the smoky light.</textarea>
+
+    <div class="controls">
+      <div>
+        <label>Genre</label>
+        <select id="genre">
+          <option>noir</option><option>thriller</option><option>drama</option>
+          <option>sci-fi</option><option>horror</option><option>western</option>
+          <option>romance</option><option>action</option><option>fantasy</option>
+        </select>
+      </div>
+      <div>
+        <label>Visual style</label>
+        <select id="visual_style">
+          <option>black and white film grain</option>
+          <option>photorealistic cinematic</option>
+          <option>vintage technicolor</option>
+          <option>graphic novel ink</option>
+          <option>anime</option>
+          <option>watercolor</option>
+          <option>cyberpunk neon</option>
+        </select>
+      </div>
+      <div>
+        <label>Mood</label>
+        <select id="mood">
+          <option>tense</option><option>dreamy</option><option>ominous</option>
+          <option>melancholic</option><option>epic</option><option>intimate</option><option>joyful</option>
+        </select>
+      </div>
+      <div>
+        <label>Era</label>
+        <select id="era">
+          <option>1940s</option><option>1970s</option><option>present day</option>
+          <option>near future</option><option>victorian</option><option>medieval</option>
+        </select>
+      </div>
+      <div>
+        <label>Palette</label>
+        <select id="color_palette">
+          <option>high-contrast monochrome</option><option>natural</option>
+          <option>warm amber</option><option>cool teal</option>
+          <option>desaturated</option><option>vibrant</option>
+        </select>
+      </div>
+      <div>
+        <label>Aspect</label>
+        <select id="aspect_ratio">
+          <option>16:9</option><option>2.39:1</option><option>4:3</option><option>1:1</option><option>9:16</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="go">Generate storyboard</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+
+  <section id="shotsSection" class="hidden">
+    <h2>Storyboard</h2>
+    <div class="grid" id="shots"></div>
+  </section>
+
+  <section id="locSection" class="hidden">
+    <h2>Filming locations</h2>
+    <div class="grid" id="locs"></div>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const btn = $("go"), status = $("status");
+
+  function style() {
+    return {
+      genre: $("genre").value,
+      visual_style: $("visual_style").value,
+      mood: $("mood").value,
+      era: $("era").value,
+      color_palette: $("color_palette").value,
+      aspect_ratio: $("aspect_ratio").value,
+    };
+  }
+
+  async function generate() {
+    const scene = $("scene").value.trim();
+    if (!scene) { status.textContent = "Enter a scene first."; return; }
+
+    btn.disabled = true;
+    status.className = "status";
+    status.innerHTML = '<span class="spinner"></span>Directing… planning shots and rendering frames (~15–25s)';
+    $("shotsSection").classList.add("hidden");
+    $("locSection").classList.add("hidden");
+    $("shots").innerHTML = ""; $("locs").innerHTML = "";
+
+    try {
+      const res = await fetch("/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scene, style: style() }),
+      });
+      if (!res.ok) throw new Error("Server error " + res.status);
+      const data = await res.json();
+
+      for (const s of data.shots) {
+        const el = document.createElement("div");
+        el.className = "shot";
+        el.innerHTML =
+          `<img src="${s.image_data_url}" alt="shot ${s.index + 1}" />
+           <div class="meta"><div class="num">SHOT ${s.index + 1}</div>
+           <div class="desc"></div></div>`;
+        el.querySelector(".desc").textContent = s.description;
+        $("shots").appendChild(el);
+      }
+      $("shotsSection").classList.remove("hidden");
+
+      if (data.locations && data.locations.length) {
+        for (const l of data.locations) {
+          const el = document.createElement("div");
+          el.className = "loc";
+          el.innerHTML =
+            `<div class="name"></div><div class="addr"></div>
+             <a href="${l.maps_url}" target="_blank" rel="noopener">Open in Google Maps →</a>`;
+          el.querySelector(".name").textContent = l.name;
+          el.querySelector(".addr").textContent = l.address;
+          $("locs").appendChild(el);
+        }
+        $("locSection").classList.remove("hidden");
+      }
+
+      status.textContent = `Done — ${data.shots.length} frames` +
+        (data.locations.length ? `, ${data.locations.length} locations.` : ".");
+    } catch (e) {
+      status.className = "status error";
+      status.textContent = "Failed: " + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener("click", generate);
+</script>
+</body>
+</html>
