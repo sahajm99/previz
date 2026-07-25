@@ -83,6 +83,44 @@ fi
 # 5. Cached frames. The demo leans on these when generation is slow or quota is out.
 check 200 "/cache/maya_shot1.png" "committed demo frames must be in the image"
 
+# 6. Every tab has to be REACHABLE, not just present in the bundle.
+#
+# This section exists because of a real failure. A merge added a complete
+# screenwriter page at /static/write.html and nothing linked to it, so the work
+# was live and invisible: 270 lines of finished UI that no user could open. The
+# API was healthy the whole time, so every check above passed.
+#
+# So: assert each tab's asset serves AND that the rail actually points at the
+# standalone pages. A tab nobody can reach is a tab that does not exist.
+for ASSET in /static/write.html /static/bible.js /static/builder.js \
+             /static/bible.css /static/builder.css; do
+  check 200 "$ASSET" "a tab's code must ship"
+done
+
+RAIL="$(curl -s --max-time 20 "$URL/" 2>/dev/null || echo '')"
+for NEED in "/static/write.html" 'data-s="bible"' 'data-s="board"' \
+            'data-s="cast"' 'data-s="build"' 'data-s="scout"'; do
+  if printf '%s' "$RAIL" | grep -q -- "$NEED"; then
+    say "ok" "rail reaches $NEED"
+  else
+    say "FAIL" "rail is missing $NEED, that tab is unreachable"
+    FAIL=1
+  fi
+done
+
+# 7. One endpoint per tab, so a tab whose backend died is caught here rather
+#    than by a judge clicking it. Under auth these are 401, which still proves
+#    the route is mounted; 404 would mean it is gone.
+if printf '%s' "$BODY" | grep -q '"auth_required":true'; then EXPECT=401; else EXPECT=200; fi
+check "$EXPECT" "/api/characters"          "Cast backend"
+check "$EXPECT" "/api/locations"           "Scout backend"
+check "$EXPECT" "/api/proposals"           "Bible canon strip backend"
+check "$EXPECT" "/api/scenes/1/shots"      "Board backend"
+check "$EXPECT" "/api/scenes/1/screenplay" "Screenwriter backend"
+# Guarded like the rest, not public. 401 here still proves the route is mounted,
+# which is what this section is for.
+check "$EXPECT" "/api/screenplay/grammar"  "screenplay grammar drives the editor"
+
 echo
 if [ "$FAIL" -eq 0 ]; then
   echo "  PASS"

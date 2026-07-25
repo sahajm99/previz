@@ -34,10 +34,15 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5.5A2 2 0 016 3.5h12v17H6a2 2 0 01-2-2z"/><path d="M8 7.5h7M8 11h7"/></svg>
       <span class="name">Bible</span>
     </button>
-    <button class="tab" data-s="script" style="--tint:var(--script)">
+    <!-- An anchor, and deliberately WITHOUT data-s. app.js binds the surface
+         switcher to .tab[data-s], so leaving it off means this navigates instead
+         of trying to swap a panel. write.html is the real screenwriter: scene
+         list, formatted pages, the AI panel. The inline script surface below is
+         the earlier stub and is now unreachable. -->
+    <a class="tab" href="/static/write.html" style="--tint:var(--script)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 3.5h9l5 5v12H5z"/><path d="M14 3.5v5h5M8 13h8M8 16.5h5"/></svg>
-      <span class="name">Script</span>
-    </button>
+      <span class="name">Screenwriter</span>
+    </a>
     <button class="tab" data-s="board" style="--tint:var(--board)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5.5" width="18" height="13" rx="1.6"/><path d="M3 9.5h18M8 5.5v4M16 5.5v4"/></svg>
       <span class="name">Board</span>
