@@ -261,6 +261,7 @@ function drawBoard() {
   }
   box.innerHTML = sc.shots.map(frameFor).join("");
   bindFrameButtons();
+  bindFrameImages();
 }
 
 /* Every frame carries three actions: regenerate (same shot), more (variants off
@@ -270,6 +271,27 @@ function bindFrameButtons() {
   $$("#board .regen").forEach((b) => b.onclick = () => renderOne(b.dataset.id));
   $$("#board .more").forEach((b) => b.onclick = () => moreLike(b.dataset.id));
   $$("#board .tink").forEach((b) => b.onclick = () => tinker(b.dataset.id));
+}
+
+/* Frames are served by one Cloud Run instance (max one, because the store is in
+ * memory), and while it is busy generating a static frame request can transiently
+ * time out and paint a broken tile even though the file is there. Retry a few
+ * times with backoff, and recover a frame that already failed before this ran. */
+function bindFrameImages() {
+  $$("#board .frame img").forEach((img) => {
+    if (img.dataset.wired) return;
+    img.dataset.wired = "1";
+    const base = img.getAttribute("src");
+    let tries = 0;
+    const reload = () => {
+      if (tries++ >= 3) return;
+      setTimeout(() => {
+        img.src = base + (base.includes("?") ? "&" : "?") + "retry=" + tries;
+      }, 500 * tries);
+    };
+    img.onerror = reload;
+    if (img.complete && img.naturalWidth === 0) reload();
+  });
 }
 
 function frameFor(sh) {
@@ -342,6 +364,7 @@ function paint(sh) {
   const fresh = $(`#f-${sh.id}`);
   fresh?.classList.add("new");
   bindFrameButtons();
+  bindFrameImages();
 }
 
 async function budget() {
