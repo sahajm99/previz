@@ -52,9 +52,25 @@
 
 name: deploy
 
+# Manual only, because on this project it CANNOT succeed.
+#
+# It authenticates with a service account key, and key creation is blocked by an
+# enforced org policy:
+#
+#   constraints/iam.disableServiceAccountKeyCreation
+#   FAILED_PRECONDITION: Key creation is not allowed on this service account.
+#
+# Nobody can create that key. Not an admin, not the project owner, nobody, until
+# the policy changes. So `on: push` meant a red failure on every single commit,
+# 15 seconds in, which trains everyone to ignore CI and makes the repo look
+# broken to anyone reading it.
+#
+# Kept rather than deleted because it is the migration note: the moment WIF is
+# possible (needs iam.workloadIdentityPools.create, currently DENIED), swap the
+# auth step and put `push` back.
+#
+# Until then: bash scripts/deploy.sh
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # One deploy at a time, and never cancel one in flight. cancel-in-progress would
@@ -137,11 +153,18 @@ jobs:
       # only earns traffic by passing. A bad revision never serves a user request.
       - name: Deploy revision with no traffic
         run: |
+          # --max-instances 1 is correctness, not cost. The store is in process
+          # memory and seed.build() generates fresh ids per boot, so every
+          # instance holds a different story. Two instances means a page loaded
+          # on one and a click served by the other, which is a 404 on a character
+          # that exists. This happened in production at maxScale=10.
+          # Raising it is safe only once state lives outside the process.
           gcloud run deploy "$SERVICE" \
             --image "$IMAGE:$TAG" \
             --region "$REGION" \
             --allow-unauthenticated \
-            --min-instances 1 --memory 2Gi --cpu 2 --timeout 600 --port 8080 \
+            --min-instances 1 --max-instances 1 --session-affinity \
+            --memory 2Gi --cpu 2 --timeout 600 --port 8080 \
             --no-traffic --tag "rev$TAG" \
             --update-env-vars "GCP_PROJECT=$PROJECT,GCP_LOCATION=$REGION,GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}" \
             --quiet
