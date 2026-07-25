@@ -1,7 +1,10 @@
 # Magic Hour, one container.
 #
-# BUILD CONTEXT IS THE REPO ROOT, not backend/:
-#     docker build -f backend/Dockerfile .
+# BUILD CONTEXT IS THE REPO ROOT, and the file lives at the root so that
+# `gcloud run deploy --source .` finds it. It used to sit at backend/Dockerfile,
+# and every deploy that ran `--source backend` failed on its first COPY, because
+# the paths below are written from the root:
+#     docker build .
 #     gcloud run deploy --source .          (from the repo root)
 #
 # It has to be the root because the app reads data/seed/character_questions.json,
