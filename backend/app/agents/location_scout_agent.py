@@ -4,6 +4,7 @@ Implements an autonomous reasoning loop using Gemini 2.5 and Google Maps tools.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import json
 import math
@@ -89,7 +90,7 @@ class LocationScoutAgent:
         return default_res
 
     def _score_vibe_match(self, place: dict[str, Any], vibe_desc: str) -> tuple[float, str]:
-        """Score how well a place matches the cinematic vibe (0.0 to 1.0) with reasoning."""
+        """Score how well a place matches the cinematic vibe (0.0 to 1.0) with heuristic reasoning."""
         name = (place.get("displayName") or {}).get("text", "Unknown Place")
         address = place.get("formattedAddress", "")
         types_list = place.get("types", [])
@@ -112,26 +113,10 @@ class LocationScoutAgent:
             score = min(0.99, score + 0.03)
             reasons.append("Highly rated location with proven production reliability.")
 
-        if self.client and len(vibe_desc) > 10:
-            try:
-                prompt = (
-                    f"Evaluate how well this location fits a film director's vibe requirement.\n"
-                    f"Director Vibe Requirement: \"{vibe_desc}\"\n"
-                    f"Location Name: {name}\n"
-                    f"Address: {address}\n"
-                    f"Types: {types_list}\n\n"
-                    "Return a single concise sentence explaining why this location is visually compelling for this scene."
-                )
-                resp = self.client.models.generate_content(model=TEXT_MODEL, contents=prompt)
-                if resp.text and len(resp.text.strip()) > 10:
-                    return round(score, 2), resp.text.strip()
-            except Exception:
-                pass
-
         return round(score, 2), " ".join(reasons)
 
     def scout_locations(self, req: VibeSearchRequest, fallback_to_seed: bool = True, session_id: str | None = None) -> list[LocationSuggestion]:
-        """Execute autonomous scouting loop: parse -> search -> enrich & score -> cache -> store."""
+        """Execute autonomous scouting loop: parse -> search -> concurrent enrich & batch score -> store."""
         parsed = self._parse_query_with_gemini(req)
         query_str = parsed.get("search_query", req.query)
         region_str = parsed.get("region", req.region or "")
@@ -155,8 +140,35 @@ class LocationScoutAgent:
             res = [m[1] for m in matched[: req.limit]]
             return res if res else all_locs[: req.limit]
 
-        results = []
-        for p in places[: req.limit]:
+        target_places = places[: req.limit]
+        batch_evals = {}
+        if self.client and target_places:
+            try:
+                place_items = []
+                for idx, p in enumerate(target_places):
+                    p_name = (p.get("displayName") or {}).get("text", "Unknown")
+                    p_addr = p.get("formattedAddress", "")
+                    p_types = p.get("types", ["location"])
+                    place_items.append(f"[{idx}] Name: {p_name} | Address: {p_addr} | Types: {', '.join(p_types[:3])}")
+                prompt = (
+                    f"Evaluate how well each location fits a film director's vibe requirement.\n"
+                    f"Director Vibe Requirement: \"{vibe_str}\"\n\n"
+                    f"Locations:\n" + "\n".join(place_items) + "\n\n"
+                    "Return a JSON object where each key is the location index (e.g. \"0\", \"1\") and value is an object with \"score\" (float between 0.70 and 0.99) and \"reasoning\" (1 concise sentence explaining why this location is visually compelling for this scene)."
+                )
+                resp = self.client.models.generate_content(
+                    model=TEXT_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(response_mime_type="application/json"),
+                )
+                data = json.loads(resp.text)
+                if isinstance(data, dict):
+                    batch_evals = data
+            except Exception:
+                pass
+
+        def _process_place(args: tuple[int, dict[str, Any]]) -> LocationSuggestion:
+            idx, p = args
             pid = p.get("id", "")
             name = (p.get("displayName") or {}).get("text", "Unknown")
             addr = p.get("formattedAddress", "")
@@ -188,7 +200,16 @@ class LocationScoutAgent:
             if not photo_url:
                 photo_url = sv_url or get_static_map_url(lat, lng)
 
-            score, reasoning = self._score_vibe_match(p, vibe_str)
+            eval_data = batch_evals.get(str(idx)) or batch_evals.get(idx)
+            if isinstance(eval_data, dict) and "score" in eval_data and "reasoning" in eval_data:
+                try:
+                    score = round(float(eval_data["score"]), 2)
+                    reasoning = str(eval_data["reasoning"]).strip()
+                except Exception:
+                    score, reasoning = self._score_vibe_match(p, vibe_str)
+            else:
+                score, reasoning = self._score_vibe_match(p, vibe_str)
+
             emb = _generate_synthetic_embedding(f"{name} {addr} {vibe_str} {' '.join(types_list)}")
 
             loc = LocationSuggestion(
@@ -201,7 +222,7 @@ class LocationScoutAgent:
                 photo_url=photo_url,
                 place_types=types_list[:4],
                 rating=rating,
-                budget_tier=b_tier, # type: ignore
+                budget_tier=b_tier,  # type: ignore
                 permit_status="Standard municipal permit required" if b_tier != "Free" else "No permit needed for small crews",
                 tech_reqs=["Power access via nearby street drop", "Low RF interference"],
                 vibe_match_score=score,
@@ -211,7 +232,10 @@ class LocationScoutAgent:
                 embedding=emb,
             )
             get_store(session_id).save_location(loc)
-            results.append(loc)
+            return loc
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(_process_place, enumerate(target_places)))
 
         return results
 

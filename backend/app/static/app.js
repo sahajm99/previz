@@ -695,7 +695,10 @@ function drawLocs(customList = null) {
   });
   $$("#locs .sim").forEach((b) => b.onclick = async () => {
     const locId = b.dataset.id;
-    if ($("#scoutStatus")) $("#scoutStatus").textContent = "Finding similar locations...";
+    const origText = b.textContent;
+    b.textContent = "🔍 Searching...";
+    b.disabled = true;
+    if ($("#scoutStatus")) $("#scoutStatus").textContent = "Finding visually & semantically similar locations...";
     try {
       const results = await api("/scout/similar", {
         method: "POST", body: JSON.stringify({ place_id: locId, limit: 3 }) });
@@ -703,10 +706,22 @@ function drawLocs(customList = null) {
       drawLocs(results);
     } catch (e) {
       if ($("#scoutStatus")) $("#scoutStatus").textContent = "Similarity search failed or fallback used.";
+    } finally {
+      b.textContent = origText;
+      b.disabled = false;
     }
   });
   $$("#locs .add-canvas").forEach((b) => b.onclick = async () => {
+    const origText = b.textContent;
+    b.textContent = "✓ Added!";
+    b.style.background = "var(--emerald, #10B981)";
+    b.style.color = "#000";
     await addLocToCanvas(b.dataset.id, b.dataset.name);
+    setTimeout(() => {
+      b.textContent = origText;
+      b.style.background = "";
+      b.style.color = "";
+    }, 1500);
   });
 }
 
@@ -922,15 +937,21 @@ $("#btnScout").onclick = async () => {
   }
 
   $("#btnScout").disabled = true;
-  if ($("#scoutStatus")) $("#scoutStatus").textContent = "Scouting with Gemini 2.5 Vibe Match (auto-detected filters applied)...";
-  await sse("/scout", {
-    need, region: regEl ? regEl.value : "New York, NY",
-    scene: $("#scoutScene").value ? +$("#scoutScene").value : null,
-  }, { run_end: () => {
-    if ($("#scoutStatus")) $("#scoutStatus").textContent = "Scout complete! Found locations with real Google Maps images.";
-    load();
-  }});
-  $("#btnScout").disabled = false;
+  const origText = $("#btnScout").textContent;
+  $("#btnScout").textContent = "⚡ AI Scouting (<5s)...";
+  if ($("#scoutStatus")) $("#scoutStatus").textContent = "⚡ Fast-scouting with Gemini 2.5 & parallel Google Maps processing...";
+  try {
+    await sse("/scout", {
+      need, region: regEl ? regEl.value : "New York, NY",
+      scene: $("#scoutScene").value ? +$("#scoutScene").value : null,
+    }, { run_end: () => {
+      if ($("#scoutStatus")) $("#scoutStatus").textContent = "⚡ Scout complete! Found locations with real Google Maps images.";
+      load();
+    }});
+  } finally {
+    $("#btnScout").disabled = false;
+    $("#btnScout").textContent = origText;
+  }
 };
 
 /* ------------------------------------------------------------------- the canon */
