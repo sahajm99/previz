@@ -213,23 +213,65 @@
     <!-- Scout ------------------------------------------------------------- -->
     <section class="surface" data-s="scout">
       <div class="panel pad" style="margin-bottom:14px">
-        <div style="display:flex;gap:10px;align-items:flex-end">
-          <div style="flex:1">
-            <label class="lab">Scene needs</label>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px">
+            <label class="lab">What the scene needs (Natural Language Vibe)</label>
             <input class="f" id="scoutNeed" placeholder="a working bus depot with a yard you can shoot at night">
           </div>
-          <div style="width:180px">
+          <div style="width:150px">
             <label class="lab">Region</label>
-            <input class="f" id="scoutRegion" value="New York, NY">
+            <select class="f" id="scoutRegion" style="width:100%;height:32px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:0 8px">
+              <option value="New York, NY">New York, NY</option>
+              <option value="Los Angeles, CA">Los Angeles, CA</option>
+              <option value="London, UK">London, UK</option>
+              <option value="Tokyo, Japan">Tokyo, Japan</option>
+            </select>
           </div>
-          <div style="width:120px">
+          <div style="width:140px">
+            <label class="lab">Budget Tier</label>
+            <select class="f" id="scoutBudget" style="width:100%;height:32px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:0 8px">
+              <option value="Low">&lt; $5k/day (Low)</option>
+              <option value="Free">Free / Student</option>
+              <option value="High">&gt; $5k/day (High)</option>
+            </select>
+          </div>
+          <div style="width:130px">
+            <label class="lab">Time of Day</label>
+            <select class="f" id="scoutTime" style="width:100%;height:32px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:0 8px">
+              <option value="Night">Night / Neon</option>
+              <option value="Day">Day / Sunlight</option>
+              <option value="Magic Hour">Magic Hour</option>
+            </select>
+          </div>
+          <div style="width:110px">
             <label class="lab">Attach to</label>
             <select class="f" id="scoutScene"></select>
           </div>
-          <button class="act primary" id="btnScout">Scout</button>
+          <button class="act primary" id="btnScout">Scout Vibe</button>
+        </div>
+        <div class="tiny faint" style="margin-top:9px;display:flex;justify-content:space-between;align-items:center">
+          <span>Powered by Gemini 2.5 Vibe Match & Places API. Evaluates architectural aesthetic, permit requirements, and logistics.</span>
+          <span id="scoutStatus" style="color:var(--emerald);font-weight:600"></span>
         </div>
       </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px">
+        <button class="act primary" id="subAllBtn" onclick="switchScoutSub('all')" style="font-size:12px;padding:5px 12px">Scouted Locations (<span id="countAll">0</span>)</button>
+        <button class="act" id="subShortBtn" onclick="switchScoutSub('shortlist')" style="font-size:12px;padding:5px 12px">★ Shortlist (<span id="countShort">0</span>)</button>
+        <button class="act" id="subCanvasBtn" onclick="switchScoutSub('canvas')" style="font-size:12px;padding:5px 12px">📍 Interactive Scene Canvas</button>
+      </div>
+
       <div class="grid cards" id="locs"></div>
+      <div id="canvasView" style="display:none" class="panel pad">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:10px">
+          <div><strong style="color:var(--scout)">📍 Production Logistics Summary:</strong> <span id="canvasLogisticsText">Select locations and connect scenes to calculate routing matrix.</span></div>
+          <div style="display:flex;gap:8px">
+            <button class="act primary" onclick="openCanvasRouteOnMaps()" style="font-size:11px;padding:4px 10px;font-weight:bold">🗺️ Open Route in Google Maps</button>
+            <button class="act" onclick="loadScoutCanvas()" style="font-size:11px;padding:4px 10px">↻ Refresh Canvas</button>
+          </div>
+        </div>
+        <div id="canvasBoardArea" style="position:relative;min-height:460px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:hidden;padding:16px"></div>
+      </div>
     </section>
   </main>
 

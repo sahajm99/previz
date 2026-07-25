@@ -433,3 +433,26 @@ label.lab {
   *, *::before, *::after { animation: none !important; transition-duration: 1ms !important; }
   #stars { display: none; }
 }
+
+/* Location Scouting & Interactive Scene Canvas custom UI enhancements */
+#locs .panel {
+  transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+#locs .panel:hover {
+  transform: translateY(-2px);
+  border-color: var(--scout);
+  box-shadow: 0 8px 24px rgba(52, 211, 153, 0.12);
+}
+#locs .toggle-scene {
+  transition: all 0.15s ease;
+}
+#locs .toggle-scene:hover {
+  border-color: var(--scout);
+  background: rgba(52, 211, 153, 0.15);
+}
+#btnScout {
+  transition: all 0.2s ease;
+}
+#btnScout:not(:disabled):hover {
+  box-shadow: 0 0 15px rgba(52, 211, 153, 0.4);
+}

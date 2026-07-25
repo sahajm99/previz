@@ -122,6 +122,14 @@ class Location:
     notes: str = ""
     shortlisted: bool = False
     attribution: str = ""
+    budget_tier: str = "Low"
+    permit_status: str = "Required"
+    vibe_match_score: float | None = None
+    vibe_reasoning: str | None = None
+    street_view_url: str | None = None
+    embedding: list[float] | None = None
+    similar_place_ids: list[str] = field(default_factory=list)
+    attached_scenes: list[int] = field(default_factory=list)
 
 
 @dataclass
