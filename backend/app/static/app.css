@@ -19,8 +19,8 @@
   --line: rgba(255, 255, 255, 0.09);
   --line-bright: rgba(255, 255, 255, 0.16);
   --ink: #F5F5F7;
-  --ink-dim: #9EA0A8;
-  --ink-faint: #63656E;
+  --ink-dim: #B4B6BE;    /* was #9EA0A8 */
+  --ink-faint: #8C8E97;  /* was #63656E, which was ~4:1 on the field and unreadable at 11px */
 
   /* Per surface accents. Used on the active rail item and one panel edge only,
    * so the workspace itself stays neutral and the images are the colour. */
@@ -89,6 +89,13 @@ body {
   border-right: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(20px);
+  /* position and z-index are why the tooltips are visible at all. backdrop-filter
+   * makes this element a stacking context, so a tooltip inside it cannot paint
+   * above a later sibling no matter how high its own z-index is. #work is a
+   * later grid sibling, so without this the rail's tooltips render underneath
+   * the workspace. Raising the whole rail lifts them with it. */
+  position: relative;
+  z-index: 30;
 }
 
 .mark {
@@ -131,18 +138,21 @@ body {
   box-shadow: 0 0 10px var(--tint);
 }
 .tab .name {
-  position: absolute; left: 54px;
-  padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #12141A;
+  position: absolute; left: 56px; top: 50%;
+  transform: translateY(-50%);
+  padding: 6px 11px;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background: #171A21;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.6);
   color: var(--ink);
-  font-size: 11.5px; letter-spacing: 0.02em; white-space: nowrap;
+  font: 500 13px/1 var(--ui);
+  white-space: nowrap;
   opacity: 0; pointer-events: none;
   transition: opacity var(--t) var(--ease);
-  z-index: 20;
+  z-index: 40;
 }
-.tab:hover .name { opacity: 1; }
+.tab:hover .name, .tab:focus-visible .name { opacity: 1; }
 .spacer { flex: 1; }
 
 /* -------------------------------------------------------------- the workspace */
@@ -181,9 +191,9 @@ header.bar .right { margin-left: auto; display: flex; gap: 8px; align-items: cen
 .pad { padding: 16px 18px; }
 
 .eyebrow {
-  font: 500 10.5px/1 var(--ui);
-  letter-spacing: 0.13em; text-transform: uppercase;
-  color: var(--ink-faint);
+  font: 600 11px/1 var(--ui);
+  letter-spacing: 0.11em; text-transform: uppercase;
+  color: var(--ink-dim);
   margin-bottom: 10px;
 }
 
@@ -254,7 +264,7 @@ label.lab {
 
 .muted { color: var(--ink-dim); }
 .faint { color: var(--ink-faint); }
-.tiny { font-size: 11.5px; }
+.tiny { font-size: 12.5px; line-height: 1.55; }
 .mono { font-family: var(--mono); }
 .empty {
   padding: 34px 20px; text-align: center;
@@ -295,6 +305,18 @@ label.lab {
   animation: sweep 1250ms linear infinite;
 }
 @keyframes sweep { to { background-position: -220% 0; } }
+
+/* ------------------------------------------------------------- director chat */
+
+.chatlog { max-height: 280px; overflow: auto; display: flex; flex-direction: column; gap: 9px; }
+.chatlog .turn { line-height: 1.5; }
+.chatlog .turn b {
+  display: inline-block; margin-right: 6px;
+  font: 600 9.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.chatlog .turn.dir { color: var(--ink); }
+.chatlog .turn.you { color: var(--ink-dim); }
 
 /* --------------------------------------------------------------- screenplay */
 
@@ -410,4 +432,27 @@ label.lab {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: 1ms !important; }
   #stars { display: none; }
+}
+
+/* Location Scouting & Interactive Scene Canvas custom UI enhancements */
+#locs .panel {
+  transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+#locs .panel:hover {
+  transform: translateY(-2px);
+  border-color: var(--scout);
+  box-shadow: 0 8px 24px rgba(52, 211, 153, 0.12);
+}
+#locs .toggle-scene {
+  transition: all 0.15s ease;
+}
+#locs .toggle-scene:hover {
+  border-color: var(--scout);
+  background: rgba(52, 211, 153, 0.15);
+}
+#btnScout {
+  transition: all 0.2s ease;
+}
+#btnScout:not(:disabled):hover {
+  box-shadow: 0 0 15px rgba(52, 211, 153, 0.4);
 }

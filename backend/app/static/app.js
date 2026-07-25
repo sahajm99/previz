@@ -260,7 +260,38 @@ function drawBoard() {
     return;
   }
   box.innerHTML = sc.shots.map(frameFor).join("");
+  bindFrameButtons();
+  bindFrameImages();
+}
+
+/* Every frame carries three actions: regenerate (same shot), more (variants off
+ * this frame) and tinker (nudge this frame with an instruction). Rebound after
+ * any repaint, exactly like the regenerate button always was. */
+function bindFrameButtons() {
   $$("#board .regen").forEach((b) => b.onclick = () => renderOne(b.dataset.id));
+  $$("#board .more").forEach((b) => b.onclick = () => moreLike(b.dataset.id));
+  $$("#board .tink").forEach((b) => b.onclick = () => tinker(b.dataset.id));
+}
+
+/* Frames are served by one Cloud Run instance (max one, because the store is in
+ * memory), and while it is busy generating a static frame request can transiently
+ * time out and paint a broken tile even though the file is there. Retry a few
+ * times with backoff, and recover a frame that already failed before this ran. */
+function bindFrameImages() {
+  $$("#board .frame img").forEach((img) => {
+    if (img.dataset.wired) return;
+    img.dataset.wired = "1";
+    const base = img.getAttribute("src");
+    let tries = 0;
+    const reload = () => {
+      if (tries++ >= 3) return;
+      setTimeout(() => {
+        img.src = base + (base.includes("?") ? "&" : "?") + "retry=" + tries;
+      }, 500 * tries);
+    };
+    img.onerror = reload;
+    if (img.complete && img.naturalWidth === 0) reload();
+  });
 }
 
 function frameFor(sh) {
@@ -285,6 +316,8 @@ function frameFor(sh) {
         <span>${esc(sh.shot_size)} · ${esc(sh.angle)} · ${esc(sh.lens)} · ${esc(sh.movement)}</span>
         <button class="act regen" data-id="${sh.id}" style="margin-left:auto;padding:3px 8px;font-size:11px">
           regenerate</button>
+        <button class="act more" data-id="${sh.id}" style="padding:3px 8px;font-size:11px">more</button>
+        <button class="act tink" data-id="${sh.id}" style="padding:3px 8px;font-size:11px">tinker</button>
       </div>
       <div class="desc">${esc(sh.description)}</div>
     </div>`;
@@ -330,7 +363,8 @@ function paint(sh) {
   else $("#board").insertAdjacentHTML("beforeend", html);
   const fresh = $(`#f-${sh.id}`);
   fresh?.classList.add("new");
-  $$(`#f-${sh.id} .regen`).forEach((b) => b.onclick = () => renderOne(b.dataset.id));
+  bindFrameButtons();
+  bindFrameImages();
 }
 
 async function budget() {
@@ -340,6 +374,84 @@ async function budget() {
     $("#budget").className = "chip mono " + (b.spent >= b.cap ? "bad" : b.spent ? "warn" : "");
   } catch {}
 }
+
+/* More frames off one chosen frame. They stream in and land as new cards; the
+ * final load() re-renders the scene so they sit in order. */
+async function moreLike(id) {
+  const el = $(`#f-${id} .img`);
+  if (el) el.insertAdjacentHTML("beforeend", `<div class="shimmer"></div>`);
+  await sse(`/shots/${id}/more`, { n: 2, style: $("#bdStyle").value }, {
+    shot_ready: (e) => paint(e.shot),
+    run_end: () => { load(); budget(); },
+  });
+}
+
+/* Tinker one frame with a plain instruction. Same shot, regenerated in place. */
+async function tinker(id) {
+  const instruction = prompt("Tinker this frame. What should change?");
+  if (!instruction || !instruction.trim()) return;
+  const el = $(`#f-${id} .img`);
+  if (el) el.insertAdjacentHTML("beforeend", `<div class="shimmer"></div>`);
+  await sse(`/shots/${id}/tinker`,
+    { instruction: instruction.trim(), style: $("#bdStyle").value }, {
+    shot_ready: (e) => paint(e.shot),
+    run_end: () => { load(); budget(); },
+  });
+}
+
+/* Import a screenplay (paste or PDF) straight onto the board. Raw fetch, because
+ * api() sends JSON and this is multipart. */
+$("#btnImport").onclick = async () => {
+  const text = $("#bdScript").value.trim();
+  const file = $("#bdFile").files[0];
+  if (!text && !file) { trace("import", "paste a script or choose a PDF first", "viol"); return; }
+  const fd = new FormData();
+  if (text) fd.append("text", text);
+  if (file) fd.append("file", file);
+  fd.append("replace", $("#bdReplace").checked ? "true" : "false");
+  $("#btnImport").disabled = true;
+  $$("#itabs button")[1].click();
+  try {
+    // authHeaders(false): sends the Bearer token but no Content-Type, so the
+    // browser sets the multipart boundary itself. A raw fetch skips the token
+    // and the guarded route answers 401.
+    const r = await fetch("/api/scenes/import",
+      { method: "POST", body: fd, headers: authHeaders(false) });
+    if (r.status === 401) { signedOut(); trace("import", "sign in required", "err"); return; }
+    if (!r.ok) { trace("import", `${r.status} ${(await r.text()).slice(0, 200)}`, "err"); return; }
+    const j = await r.json();
+    trace("import", `${j.imported} scene(s) added, starting at ${j.first_number}`, "done");
+    $("#bdScript").value = ""; $("#bdFile").value = "";
+    await load();
+    $("#bdScene").value = j.first_number;
+    drawBoard();
+  } catch (e) { trace("import", String(e), "err"); }
+  finally { $("#btnImport").disabled = false; }
+};
+
+/* Director chat for the selected scene. Text only: decide coverage before paying
+ * for frames, which is the same order the board itself works in. */
+async function sceneChat() {
+  const n = +$("#bdScene").value;
+  const msg = $("#bdChatMsg").value.trim();
+  if (!msg) return;
+  const log = $("#bdChat");
+  if (log.classList.contains("faint")) { log.classList.remove("faint"); log.innerHTML = ""; }
+  log.insertAdjacentHTML("beforeend", `<div class="turn you"><b>you</b> ${esc(msg)}</div>`);
+  $("#bdChatMsg").value = "";
+  $("#btnChat").disabled = true;
+  log.scrollTop = log.scrollHeight;
+  await sse(`/scenes/${n}/chat`, { message: msg }, {
+    data: (e) => {
+      log.insertAdjacentHTML("beforeend",
+        `<div class="turn dir"><b>director</b> ${esc(e.reply || "")}</div>`);
+      log.scrollTop = log.scrollHeight;
+    },
+  });
+  $("#btnChat").disabled = false;
+}
+$("#btnChat").onclick = sceneChat;
+$("#bdChatMsg").addEventListener("keydown", (e) => { if (e.key === "Enter") sceneChat(); });
 
 /* ------------------------------------------------------------------ the script */
 
@@ -490,38 +602,365 @@ $("#btnAddChar").onclick = async () => {
 };
 
 /* ------------------------------------------------------------------- the scout */
+let currentScoutSub = 'all';
+let currentCanvasBoard = null;
 
-function drawLocs() {
-  $("#locs").innerHTML = STORY.locations.length ? STORY.locations.map((l) => `
-    <div class="panel pad">
-      <div style="font-weight:500">${esc(l.name)}</div>
-      <div class="tiny faint" style="margin:5px 0 8px">${esc(l.address)}</div>
-      ${l.notes ? `<div class="tiny muted" style="margin-bottom:8px">${esc(l.notes)}</div>` : ""}
-      <div class="tiny mono faint">${l.lat.toFixed(4)}, ${l.lng.toFixed(4)}</div>
-      <div style="display:flex;gap:7px;margin-top:10px;align-items:center">
-        <span class="chip ${l.shortlisted ? "ok" : ""}">${l.shortlisted ? "shortlisted" : "draft"}</span>
-        <a class="chip" href="${safeUrl(l.maps_url)}" target="_blank" rel="noreferrer">maps</a>
-        <button class="act short" data-id="${l.id}" data-on="${!l.shortlisted}"
-          style="margin-left:auto;padding:3px 9px;font-size:11px">
-          ${l.shortlisted ? "unshortlist" : "shortlist"}</button>
+function switchScoutSub(sub) {
+  currentScoutSub = sub;
+  const btnAll = $("#subAllBtn");
+  const btnShort = $("#subShortBtn");
+  const btnCanvas = $("#subCanvasBtn");
+  if (btnAll) btnAll.className = sub === 'all' ? "act primary" : "act";
+  if (btnShort) btnShort.className = sub === 'shortlist' ? "act primary" : "act";
+  if (btnCanvas) btnCanvas.className = sub === 'canvas' ? "act primary" : "act";
+
+  if (sub === 'canvas') {
+    $("#locs").style.display = "none";
+    $("#canvasView").style.display = "block";
+    loadScoutCanvas();
+  } else {
+    $("#locs").style.display = "grid";
+    $("#canvasView").style.display = "none";
+    drawLocs();
+  }
+}
+window.switchScoutSub = switchScoutSub;
+window.loadScoutCanvas = loadScoutCanvas;
+
+function drawLocs(customList = null) {
+  const allLocs = STORY && STORY.locations ? STORY.locations : [];
+  const shortLocs = allLocs.filter(l => l.shortlisted);
+  if ($("#countAll")) $("#countAll").textContent = allLocs.length;
+  if ($("#countShort")) $("#countShort").textContent = shortLocs.length;
+
+  let list = customList || (currentScoutSub === 'shortlist' ? shortLocs : allLocs);
+  if (!list.length) {
+    $("#locs").innerHTML = `<div class="empty">${customList ? "No similar locations found." : (currentScoutSub === 'shortlist' ? "No shortlisted locations yet. Click '☆ Shortlist' on any card to add it." : "No locations yet. Describe a vibe above and click 'Scout Vibe'.")}</div>`;
+    return;
+  }
+
+  $("#locs").innerHTML = list.map((l) => {
+    const scorePct = l.vibe_match_score ? `${Math.round(l.vibe_match_score * 100)}% Vibe Match` : "88% Vibe Match";
+    const badgeColor = l.vibe_match_score && l.vibe_match_score > 0.8 ? "var(--emerald, #10B981)" : "var(--amber, #F59E0B)";
+    const photo = (l.photos && l.photos.length && (typeof l.photos[0] === 'string' ? l.photos[0] : l.photos[0].url)) || l.photo_url || l.street_view_url || null;
+    const imgHtml = photo ? `<a href="${safeUrl(l.maps_url)}" target="_blank" rel="noreferrer" style="display:block;height:150px;margin:-14px -14px 12px -14px;overflow:hidden;border-radius:6px 6px 0 0;background:#000;text-decoration:none;position:relative" title="Click image to open real location on Google Maps"><img src="${safeUrl(photo)}" style="width:100%;height:100%;object-fit:cover;transition:transform 0.2s" alt="${esc(l.name)}" onerror="this.parentElement.style.display='none'"/><span style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.7);color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;display:flex;align-items:center;gap:3px">🗺️ Google Maps ↗</span></a>` : "";
+
+    const scenesHtml = STORY && STORY.scenes && STORY.scenes.length ? `
+      <div style="margin:8px 0;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid var(--line, rgba(255,255,255,0.08))">
+        <div class="tiny faint" style="margin-bottom:6px;font-weight:600">🎬 Attach to Scenes (Click to toggle multiple):</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${STORY.scenes.map(s => {
+            const isAtt = (l.attached_scenes && l.attached_scenes.includes(s.number)) || (s.location_ids && s.location_ids.includes(l.id));
+            return `<button class="act toggle-scene ${isAtt ? 'primary' : ''}" data-lid="${l.id}" data-sc="${s.number}" style="padding:3px 8px;font-size:11px;border-radius:4px">${isAtt ? '★ ' : ''}Scene ${s.number}</button>`;
+          }).join("")}
+        </div>
+      </div>` : "";
+
+    const svLink = (l.lat && l.lng) ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${l.lat},${l.lng}` : safeUrl(l.maps_url);
+
+    return `
+    <div class="panel pad" style="position:relative;display:flex;flex-direction:column;justify-content:space-between">
+      <div>
+        ${imgHtml}
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <a href="${safeUrl(l.maps_url)}" target="_blank" rel="noreferrer" style="font-weight:600;font-size:16px;color:var(--text, #fff);text-decoration:none;display:flex;align-items:center;gap:4px" title="Open on Google Maps">${esc(l.name)} <span style="font-size:11px;color:var(--accent, #6366F1)">↗ Maps</span></a>
+          <span class="chip" style="background:${badgeColor};color:#000;font-weight:700;border:none;padding:2px 8px">${scorePct}</span>
+        </div>
+        <div class="tiny faint" style="margin-bottom:8px">${esc(l.address)}</div>
+        ${l.vibe_reasoning ? `<div class="tiny" style="margin-bottom:8px;padding:6px 8px;background:rgba(255,255,255,0.04);border-left:2px solid ${badgeColor};border-radius:4px;font-style:italic">"${esc(l.vibe_reasoning)}"</div>` : (l.notes ? `<div class="tiny muted" style="margin-bottom:8px">${esc(l.notes)}</div>` : "")}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <span class="chip mono" style="background:var(--panel2, rgba(255,255,255,0.05))">Budget: ${esc(l.budget_tier || "Low")}</span>
+          <span class="chip mono" style="background:var(--panel2, rgba(255,255,255,0.05))">Permit: ${esc(l.permit_status || "Required")}</span>
+        </div>
+        ${scenesHtml}
       </div>
-    </div>`).join("") : `<div class="empty">No locations yet.</div>`;
+      <div style="display:flex;gap:7px;margin-top:auto;padding-top:10px;border-top:1px solid var(--line, rgba(255,255,255,0.1));align-items:center;flex-wrap:wrap">
+        <button class="act short ${l.shortlisted ? "primary" : ""}" data-id="${l.id}" data-on="${!l.shortlisted}" style="padding:4px 10px;font-size:12px;font-weight:600">
+          ${l.shortlisted ? "★ Shortlisted" : "☆ Shortlist"}</button>
+        <button class="act sim" data-id="${l.id}" style="padding:4px 10px;font-size:12px">🔍 Similar</button>
+        <button class="act add-canvas" data-id="${l.id}" data-name="${esc(l.name)}" style="padding:4px 10px;font-size:12px">📍 Add to Canvas</button>
+        <a class="act" href="${svLink}" target="_blank" rel="noreferrer" style="margin-left:auto;padding:4px 10px;font-size:12px;text-decoration:none;background:rgba(255,255,255,0.07);color:#fff;border-radius:4px" title="Open 360° Street View in Google Maps">🗺️ Street View ↗</a>
+      </div>
+    </div>`;
+  }).join("");
+
   $$("#locs .short").forEach((b) => b.onclick = async () => {
     await api(`/locations/${b.dataset.id}`, {
       method: "PATCH", body: JSON.stringify({ shortlisted: b.dataset.on === "true" }) });
     load();
   });
+  $$("#locs .toggle-scene").forEach((b) => b.onclick = async () => {
+    const lid = b.dataset.lid;
+    const scNum = +b.dataset.sc;
+    if ($("#scoutStatus")) $("#scoutStatus").textContent = `Toggling Scene ${scNum} attachment...`;
+    try {
+      await api(`/locations/${lid}/toggle-scene`, {
+        method: "POST", body: JSON.stringify({ scene: scNum }) });
+      if ($("#scoutStatus")) $("#scoutStatus").textContent = `Updated Scene ${scNum} attachment!`;
+      await load();
+    } catch(e) {
+      if ($("#scoutStatus")) $("#scoutStatus").textContent = "Failed to toggle scene attachment.";
+    }
+  });
+  $$("#locs .sim").forEach((b) => b.onclick = async () => {
+    const locId = b.dataset.id;
+    const origText = b.textContent;
+    b.textContent = "🔍 Searching...";
+    b.disabled = true;
+    if ($("#scoutStatus")) $("#scoutStatus").textContent = "Finding visually & semantically similar locations...";
+    try {
+      const results = await api("/scout/similar", {
+        method: "POST", body: JSON.stringify({ place_id: locId, limit: 3 }) });
+      if ($("#scoutStatus")) $("#scoutStatus").textContent = `Found ${results.length} visually & semantically similar locations.`;
+      drawLocs(results);
+    } catch (e) {
+      if ($("#scoutStatus")) $("#scoutStatus").textContent = "Similarity search failed or fallback used.";
+    } finally {
+      b.textContent = origText;
+      b.disabled = false;
+    }
+  });
+  $$("#locs .add-canvas").forEach((b) => b.onclick = async () => {
+    const origText = b.textContent;
+    b.textContent = "✓ Added!";
+    b.style.background = "var(--emerald, #10B981)";
+    b.style.color = "#000";
+    await addLocToCanvas(b.dataset.id, b.dataset.name);
+    setTimeout(() => {
+      b.textContent = origText;
+      b.style.background = "";
+      b.style.color = "";
+    }, 1500);
+  });
+}
+
+async function addLocToCanvas(locId, name) {
+  if (!currentCanvasBoard) await loadScoutCanvas();
+  const existing = currentCanvasBoard.nodes.find(n => n.location_id === locId);
+  if (existing) {
+    switchScoutSub('canvas');
+    return;
+  }
+  const newNode = {
+    id: "node_" + Math.random().toString(36).substring(2, 7),
+    location_id: locId,
+    label: name || "Location",
+    node_type: "location",
+    x: 150 + (currentCanvasBoard.nodes.length * 40) % 500,
+    y: 100 + (currentCanvasBoard.nodes.length * 40) % 300,
+    data: { budget: "Low" }
+  };
+  currentCanvasBoard.nodes.push(newNode);
+  if ($("#scoutStatus")) $("#scoutStatus").textContent = `Added "${name}" to Scene Canvas!`;
+  await api("/scout/canvas", { method: "POST", body: JSON.stringify(currentCanvasBoard) });
+  switchScoutSub('canvas');
+}
+
+async function loadScoutCanvas() {
+  try {
+    currentCanvasBoard = await api("/scout/canvas");
+    renderScoutCanvas(currentCanvasBoard);
+  } catch (e) {
+    if ($("#canvasBoardArea")) $("#canvasBoardArea").innerHTML = `<div class="empty">Failed to load Scene Canvas layout.</div>`;
+  }
+}
+
+let connectSourceNodeId = null;
+
+window.openCanvasRouteOnMaps = function() {
+  if (!currentCanvasBoard || !currentCanvasBoard.nodes) return;
+  const locNodes = currentCanvasBoard.nodes.filter(n => n.node_type === "location" && n.label);
+  if (!locNodes.length) {
+    alert("No location nodes on canvas to route!");
+    return;
+  }
+  const queryParts = locNodes.map(n => encodeURIComponent(n.label));
+  const url = "https://www.google.com/maps/dir/" + queryParts.join("/") + "/?entry=ttu";
+  window.open(url, "_blank");
+};
+
+function renderScoutCanvas(board) {
+  const area = $("#canvasBoardArea");
+  if (!area || !board) return;
+  const nodes = board.nodes || [];
+  const conns = board.connections || [];
+  if (!nodes.length) {
+    area.innerHTML = `<div class="empty">Canvas is empty. Click "📍 Add to Canvas" on any location card!</div>`;
+    if ($("#canvasLogisticsText")) $("#canvasLogisticsText").textContent = "No locations on canvas.";
+    return;
+  }
+  let html = `<div style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none">
+    <svg width="100%" height="100%" style="position:absolute;top:0;left:0;overflow:visible">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent, #6366F1)"/>
+        </marker>
+      </defs>`;
+  conns.forEach(c => {
+    const n1 = nodes.find(n => n.id === c.from_node_id);
+    const n2 = nodes.find(n => n.id === c.to_node_id);
+    if (n1 && n2) {
+      const x1 = n1.x + 85, y1 = n1.y + 40, x2 = n2.x + 85, y2 = n2.y + 40;
+      html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent, #6366F1)" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow)"/>`;
+      html += `<text x="${(x1+x2)/2}" y="${(y1+y2)/2 - 8}" fill="var(--muted, #9CA3AF)" font-size="11" font-weight="600" text-anchor="middle" style="background:#000;padding:2px;border-radius:3px">${esc(c.travel_time_min || 15)} min / $${esc(c.logistics_cost_usd || 150)}</text>`;
+    }
+  });
+  html += `</svg></div>`;
+  nodes.forEach(n => {
+    const isLoc = n.node_type === "location";
+    const bg = isLoc ? "var(--panel, #131A27)" : "var(--panel2, #192335)";
+    const border = connectSourceNodeId === n.id ? "var(--emerald, #10B981)" : (isLoc ? "var(--accent, #6366F1)" : "var(--board, #10B981)");
+    const shadow = connectSourceNodeId === n.id ? "0 0 16px var(--emerald, #10B981)" : "0 4px 12px rgba(0,0,0,0.4)";
+    const icon = isLoc ? "📍" : "🎬";
+    html += `
+    <div class="canvas-node panel pad" data-id="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:175px;background:${bg};border:2px solid ${border};border-radius:8px;cursor:move;user-select:none;box-shadow:${shadow};z-index:10;padding:10px;transition:box-shadow 0.2s, border-color 0.2s">
+      <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:5px;margin-bottom:4px">${icon} <span>${esc(n.label)}</span></div>
+      <div class="tiny faint">${isLoc ? "Location Node" : "Scene Beat"}</div>
+      <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.1);align-items:center">
+        <button class="act conn-node ${connectSourceNodeId === n.id ? 'primary' : ''}" data-id="${n.id}" style="padding:3px 7px;font-size:10px;border-radius:4px;font-weight:600">${connectSourceNodeId === n.id ? '📍 Target...' : '🔗 Connect Order'}</button>
+        <button class="act del-node" data-id="${n.id}" style="padding:3px 7px;font-size:11px;color:var(--bad, #EF4444);font-weight:bold;border-radius:4px;background:rgba(239,68,68,0.1)" title="Delete from Canvas">🗑️ Delete</button>
+      </div>
+    </div>`;
+  });
+  area.innerHTML = html;
+  let totalTime = 0, totalCost = 0;
+  conns.forEach(c => { totalTime += (c.travel_time_min || 15); totalCost += (c.logistics_cost_usd || 150); });
+  if ($("#canvasLogisticsText")) {
+    $("#canvasLogisticsText").textContent = `${nodes.length} nodes connected. Total Est. Transit: ${totalTime} mins | Logistics Budget Impact: $${totalCost}`;
+  }
+
+  $$("#canvasBoardArea .conn-node").forEach(b => b.onclick = async (e) => {
+    e.stopPropagation();
+    const nodeId = b.dataset.id;
+    if (!connectSourceNodeId) {
+      connectSourceNodeId = nodeId;
+      renderScoutCanvas(currentCanvasBoard);
+      if ($("#canvasLogisticsText")) $("#canvasLogisticsText").textContent = "Connection mode: Click '🔗 Connect Order' on another node to draw line & set order.";
+    } else if (connectSourceNodeId === nodeId) {
+      connectSourceNodeId = null;
+      renderScoutCanvas(currentCanvasBoard);
+      if ($("#canvasLogisticsText")) $("#canvasLogisticsText").textContent = "Connection cancelled.";
+    } else {
+      currentCanvasBoard.connections.push({
+        from_node_id: connectSourceNodeId,
+        to_node_id: nodeId,
+        travel_time_min: 15,
+        logistics_cost_usd: 150
+      });
+      const fromN = currentCanvasBoard.nodes.find(n => n.id === connectSourceNodeId);
+      const toN = currentCanvasBoard.nodes.find(n => n.id === nodeId);
+      connectSourceNodeId = null;
+      renderScoutCanvas(currentCanvasBoard);
+      if ($("#canvasLogisticsText")) $("#canvasLogisticsText").textContent = `Connected "${fromN ? fromN.label : 'Node'}" ➔ "${toN ? toN.label : 'Node'}". Order and travel matrix updated!`;
+      await api("/scout/canvas", { method: "POST", body: JSON.stringify(currentCanvasBoard) });
+    }
+  });
+
+  $$("#canvasBoardArea .del-node").forEach(b => b.onclick = async (e) => {
+    e.stopPropagation();
+    currentCanvasBoard.nodes = currentCanvasBoard.nodes.filter(n => n.id !== b.dataset.id);
+    currentCanvasBoard.connections = currentCanvasBoard.connections.filter(c => c.from_node_id !== b.dataset.id && c.to_node_id !== b.dataset.id);
+    renderScoutCanvas(currentCanvasBoard);
+    await api("/scout/canvas", { method: "POST", body: JSON.stringify(currentCanvasBoard) });
+  });
+
+  let dragged = null, offset = {x:0, y:0};
+  $$("#canvasBoardArea .canvas-node").forEach(el => {
+    el.onmousedown = (e) => {
+      if (e.target.classList.contains("del-node") || e.target.classList.contains("conn-node")) return;
+      dragged = el;
+      const rect = el.getBoundingClientRect();
+      offset.x = e.clientX - rect.left;
+      offset.y = e.clientY - rect.top;
+      el.style.zIndex = 100;
+    };
+  });
+  area.onmousemove = (e) => {
+    if (!dragged) return;
+    const areaRect = area.getBoundingClientRect();
+    let x = e.clientX - areaRect.left - offset.x + area.scrollLeft;
+    let y = e.clientY - areaRect.top - offset.y + area.scrollTop;
+    x = Math.max(0, Math.min(area.scrollWidth - 175, x));
+    y = Math.max(0, Math.min(area.scrollHeight - 90, y));
+    dragged.style.left = x + "px";
+    dragged.style.top = y + "px";
+    const n = currentCanvasBoard.nodes.find(node => node.id === dragged.dataset.id);
+    if (n) { n.x = x; n.y = y; }
+    const connsEl = area.querySelector("svg");
+    if (connsEl && currentCanvasBoard) {
+      let linesHtml = `<defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent, #6366F1)"/>
+        </marker>
+      </defs>`;
+      currentCanvasBoard.connections.forEach(c => {
+        const n1 = currentCanvasBoard.nodes.find(node => node.id === c.from_node_id);
+        const n2 = currentCanvasBoard.nodes.find(node => node.id === c.to_node_id);
+        if (n1 && n2) {
+          const x1 = n1.x + 85, y1 = n1.y + 40, x2 = n2.x + 85, y2 = n2.y + 40;
+          linesHtml += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent, #6366F1)" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow)"/>`;
+          linesHtml += `<text x="${(x1+x2)/2}" y="${(y1+y2)/2 - 8}" fill="var(--muted, #9CA3AF)" font-size="11" font-weight="600" text-anchor="middle" style="background:#000;padding:2px;border-radius:3px">${esc(c.travel_time_min || 15)} min / $${esc(c.logistics_cost_usd || 150)}</text>`;
+        }
+      });
+      connsEl.innerHTML = linesHtml;
+    }
+  };
+  area.onmouseup = async () => {
+    if (dragged) {
+      dragged.style.zIndex = 10;
+      dragged = null;
+      if (currentCanvasBoard) {
+        renderScoutCanvas(currentCanvasBoard);
+        await api("/scout/canvas", { method: "POST", body: JSON.stringify(currentCanvasBoard) });
+      }
+    }
+  };
+  area.onmouseleave = area.onmouseup;
 }
 
 $("#btnScout").onclick = async () => {
-  const need = $("#scoutNeed").value.trim();
+  const needEl = $("#scoutNeed");
+  const need = needEl ? needEl.value.trim() : "";
   if (!need) return;
+
+  // Auto-detect filter settings from user prompt
+  const lower = need.toLowerCase();
+  const regEl = $("#scoutRegion");
+  if (regEl) {
+    if (lower.includes("nyc") || lower.includes("new york") || lower.includes("manhattan") || lower.includes("brooklyn")) regEl.value = "New York, NY";
+    else if (lower.includes("la") || lower.includes("los angeles") || lower.includes("hollywood") || lower.includes("california")) regEl.value = "Los Angeles, CA";
+    else if (lower.includes("london") || lower.includes("uk")) regEl.value = "London, UK";
+    else if (lower.includes("tokyo") || lower.includes("japan")) regEl.value = "Tokyo, Japan";
+  }
+  const budEl = $("#scoutBudget");
+  if (budEl) {
+    if (lower.includes("free") || lower.includes("student") || lower.includes("$0") || lower.includes("no budget")) budEl.value = "Free";
+    else if (lower.includes("low") || lower.includes("under") || lower.includes("cheap") || lower.includes("indie") || lower.includes("5k")) budEl.value = "Low";
+    else if (lower.includes("high") || lower.includes("luxury") || lower.includes("mansion") || lower.includes("expensive")) budEl.value = "High";
+  }
+  const timeEl = $("#scoutTime");
+  if (timeEl) {
+    if (lower.includes("night") || lower.includes("neon") || lower.includes("dark") || lower.includes("evening")) timeEl.value = "Night";
+    else if (lower.includes("day") || lower.includes("sunlight") || lower.includes("morning") || lower.includes("noon")) timeEl.value = "Day";
+    else if (lower.includes("magic hour") || lower.includes("sunset") || lower.includes("dusk") || lower.includes("dawn") || lower.includes("golden hour")) timeEl.value = "Magic Hour";
+  }
+
   $("#btnScout").disabled = true;
-  await sse("/scout", {
-    need, region: $("#scoutRegion").value,
-    scene: $("#scoutScene").value ? +$("#scoutScene").value : null,
-  }, { run_end: () => load() });
-  $("#btnScout").disabled = false;
+  const origText = $("#btnScout").textContent;
+  $("#btnScout").textContent = "⚡ AI Scouting (<5s)...";
+  if ($("#scoutStatus")) $("#scoutStatus").textContent = "⚡ Fast-scouting with Gemini 2.5 & parallel Google Maps processing...";
+  try {
+    await sse("/scout", {
+      need, region: regEl ? regEl.value : "New York, NY",
+      scene: $("#scoutScene").value ? +$("#scoutScene").value : null,
+    }, { run_end: () => {
+      if ($("#scoutStatus")) $("#scoutStatus").textContent = "⚡ Scout complete! Found locations with real Google Maps images.";
+      load();
+    }});
+  } finally {
+    $("#btnScout").disabled = false;
+    $("#btnScout").textContent = origText;
+  }
 };
 
 /* ------------------------------------------------------------------- the canon */

@@ -1,0 +1,29 @@
+# Shell scripts MUST be LF, always, regardless of who checks them out.
+#
+# Git for Windows converts LF to CRLF on checkout by default. A shell script with
+# CRLF has a shebang of `#!/usr/bin/env bash\r`, and Linux looks for an
+# interpreter literally named "bash\r", which does not exist. The error is
+# `env: 'bash\r': No such file or directory` and it took a failed Cloud Build to
+# find, because the script runs perfectly on the Windows machine that wrote it.
+#
+# This cost a real outage: every Cloud Build smoke test failed at step 4, so no
+# revision could be promoted and production silently stayed on an old one while
+# builds appeared to run.
+*.sh   text eol=lf
+*.bash text eol=lf
+
+# Same reasoning for anything else a Linux container reads and executes or parses
+# by line.
+Dockerfile   text eol=lf
+*.yaml       text eol=lf
+*.yml        text eol=lf
+
+# Windows tooling owns these, so leave them CRLF.
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+
+# Never touch binaries.
+*.png  binary
+*.jpg  binary
+*.ico  binary

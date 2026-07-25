@@ -32,13 +32,40 @@ MAX_FAILS="${MAX_FAILS:-3}"
 LAST=""
 FAILS=0
 
+# Watch the TEAM repo, not the fork. `upstream` is sahajm99/previz, which is where
+# teammates actually merge; `origin` is a personal fork and watching it would mean
+# a teammate's merge never reaches production while everything looks fine.
+# Falls back to origin when there is no upstream, so a clone of the team repo
+# itself still works unchanged.
+if [ -z "${REMOTE:-}" ]; then
+  if git remote get-url upstream >/dev/null 2>&1; then REMOTE=upstream; else REMOTE=origin; fi
+fi
+
 cd "$ROOT"
-echo "· watching origin/$BRANCH every ${INTERVAL}s. Ctrl-C to stop."
+
+# Only one watcher may deploy. The scheduled task and a hand started copy in a
+# terminal will both happily poll the same branch, and two `gcloud run deploy`
+# calls interleaving is how you promote a revision that was never smoke tested:
+# each reads latestCreatedRevisionName and gets the other's.
+LOCK="${TMPDIR:-/tmp}/magic-hour-watcher.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  OWNER="$(cat "$LOCK/pid" 2>/dev/null || echo unknown)"
+  if kill -0 "$OWNER" 2>/dev/null; then
+    echo "· another watcher is already running (pid $OWNER). Exiting."
+    exit 0
+  fi
+  echo "· clearing a stale lock from pid $OWNER"
+  rm -rf "$LOCK"; mkdir "$LOCK"
+fi
+echo $$ > "$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT INT TERM
+
+echo "· watching $REMOTE/$BRANCH ($(git remote get-url $REMOTE)) every ${INTERVAL}s"
 
 while true; do
-  git fetch origin "$BRANCH" --quiet 2>/dev/null || {
+  git fetch "$REMOTE" "$BRANCH" --quiet 2>/dev/null || {
     echo "  fetch failed, retrying in ${INTERVAL}s"; sleep "$INTERVAL"; continue; }
-  SHA="$(git rev-parse "origin/$BRANCH")"
+  SHA="$(git rev-parse "$REMOTE/$BRANCH")"
 
   if [ "$SHA" != "$LAST" ]; then
     if [ -n "$LAST" ]; then
@@ -53,7 +80,20 @@ while true; do
     # tree, so the running code matched no commit and there was nothing to bisect.
     WORK="$(mktemp -d)"
     if git worktree add --detach "$WORK" "$SHA" --quiet 2>/dev/null; then
-      if (cd "$WORK" && SERVICE="${SERVICE:-magic-hour}" ./scripts/deploy.sh); then
+      # Build in Cloud Build, not with local docker.
+      #
+      # scripts/deploy.sh runs `docker build`, which is right on a laptop and
+      # wrong here: this watcher starts at boot, before anyone logs in, and Docker
+      # Desktop is not running then. Every deploy would fail until someone
+      # happened to open Docker, and the failure would look like a code problem.
+      # cloudbuild.yaml runs the identical pipeline, including the same
+      # scripts/smoke.sh gate and the same no-traffic-then-promote ordering, and
+      # needs nothing local but gcloud.
+      if (cd "$WORK" && gcloud builds submit \
+            --config=cloudbuild.yaml \
+            --region=us-central1 \
+            --substitutions=SHORT_SHA="${SHA:0:7}" \
+            --quiet .); then
         echo "· deployed ${SHA:0:8}"
         LAST="$SHA"
       else

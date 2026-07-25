@@ -11,8 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
 from app import images
+from app.routers.locations import router as locations_router
 
 STATIC = Path(__file__).parent / "static"
 # One directory serves every frame. images.publish_demo_cache() mirrors the
@@ -70,9 +70,14 @@ except Exception as exc:  # noqa: BLE001
     API_ERROR = f"{type(exc).__name__}: {exc}"
     print(f"  API FAILED TO MOUNT: {API_ERROR}")
 
+app.include_router(locations_router)
+
 # Cached frames, sheets and dialogue, served from disk. The venue wifi dying, the
 # lab project expiring and the shared image quota running out are all live risks
 # today, and cached assets survive all three.
+LOCATIONS_CACHE_DIR = Path(__file__).parent.parent / "demo_cache" / "locations"
+LOCATIONS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/cache/locations", StaticFiles(directory=str(LOCATIONS_CACHE_DIR)), name="cache_locations")
 if CACHE.is_dir():
     app.mount("/cache", StaticFiles(directory=CACHE), name="cache")
 
