@@ -374,6 +374,41 @@ function card(p) {
     d.querySelector(".no").textContent = "Dismiss";
   }
   d.querySelector(".no").onclick = () => d.remove();
+
+  // The feedback loop. Anything a model wrote takes a director's note and goes
+  // back to the same writer: the character's own sub-agent for a line, the
+  // ActionWriter for a paragraph. The note directs this line only. It never
+  // touches the Voice Card, because a note is direction and the card is canon.
+  if (p.character_id || p.agent === "ActionWriter") {
+    const r = document.createElement("div");
+    r.className = "row";
+    const inp = document.createElement("input");
+    inp.className = "f";
+    inp.placeholder = "note · angrier, shorter, she would not admit that";
+    inp.style.flex = "2.2";
+    const go = document.createElement("button");
+    go.className = "ins";
+    go.textContent = "Revise";
+    const revise = () => {
+      const note = inp.value.trim();
+      d.remove();
+      if (p.character_id) {
+        trace(`note to ${p.character}: ${note || "again, differently"}`);
+        run(`/api/scenes/${scene}/next-line`,
+            { character_id: p.character_id, on_page: canvasText(),
+              note: note, previous: p.line }, onEvent);
+      } else {
+        trace(`note to the ActionWriter: ${note || "again, differently"}`);
+        run(`/api/scenes/${scene}/next-action`,
+            { intent: $("intent").value, on_page: canvasText(),
+              note: note, previous: p.line }, onEvent);
+      }
+    };
+    go.onclick = revise;
+    inp.onkeydown = (e) => { if (e.key === "Enter") revise(); };
+    r.append(inp, go);
+    d.appendChild(r);
+  }
   $("cards").prepend(d);
 }
 
