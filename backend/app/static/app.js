@@ -54,11 +54,28 @@ let PICKED = null;      // selected character id, Cast surface
 
 /* ------------------------------------------------------------------ transport */
 
+/* The Google ID token, held in memory only.
+ *
+ * Not in localStorage on purpose. A token in localStorage is readable by any
+ * script on the page and survives the tab, which is a worse trade than asking
+ * Google for a fresh one on reload. Google Identity Services re-issues silently
+ * for an already signed in user, so the reload cost is invisible. */
+let TOKEN = null;
+let ME = null;
+
+function authHeaders(hasBody) {
+  const h = {};
+  if (hasBody) h["Content-Type"] = "application/json";
+  if (TOKEN) h.Authorization = `Bearer ${TOKEN}`;
+  return h;
+}
+
 async function api(path, opts) {
   const r = await fetch("/api" + path, {
     ...opts,
-    headers: opts?.body ? { "Content-Type": "application/json" } : undefined,
+    headers: authHeaders(Boolean(opts?.body)),
   });
+  if (r.status === 401) { signedOut(); throw new Error("sign in required"); }
   if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 300)}`);
   return r.json();
 }
@@ -68,9 +85,10 @@ async function sse(path, body, on = {}) {
   trace("run", "starting", "think");
   const r = await fetch("/api" + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(true),
     body: JSON.stringify(body || {}),
   });
+  if (r.status === 401) { signedOut(); trace("error", "sign in required", "err"); return; }
   if (!r.ok) { trace("error", `${r.status} ${await r.text()}`, "err"); return; }
   const rd = r.body.getReader(), dec = new TextDecoder();
   let buf = "";
@@ -242,7 +260,16 @@ function drawBoard() {
     return;
   }
   box.innerHTML = sc.shots.map(frameFor).join("");
+  bindFrameButtons();
+}
+
+/* Every frame carries three actions: regenerate (same shot), more (variants off
+ * this frame) and tinker (nudge this frame with an instruction). Rebound after
+ * any repaint, exactly like the regenerate button always was. */
+function bindFrameButtons() {
   $$("#board .regen").forEach((b) => b.onclick = () => renderOne(b.dataset.id));
+  $$("#board .more").forEach((b) => b.onclick = () => moreLike(b.dataset.id));
+  $$("#board .tink").forEach((b) => b.onclick = () => tinker(b.dataset.id));
 }
 
 function frameFor(sh) {
@@ -267,6 +294,8 @@ function frameFor(sh) {
         <span>${esc(sh.shot_size)} · ${esc(sh.angle)} · ${esc(sh.lens)} · ${esc(sh.movement)}</span>
         <button class="act regen" data-id="${sh.id}" style="margin-left:auto;padding:3px 8px;font-size:11px">
           regenerate</button>
+        <button class="act more" data-id="${sh.id}" style="padding:3px 8px;font-size:11px">more</button>
+        <button class="act tink" data-id="${sh.id}" style="padding:3px 8px;font-size:11px">tinker</button>
       </div>
       <div class="desc">${esc(sh.description)}</div>
     </div>`;
@@ -312,7 +341,7 @@ function paint(sh) {
   else $("#board").insertAdjacentHTML("beforeend", html);
   const fresh = $(`#f-${sh.id}`);
   fresh?.classList.add("new");
-  $$(`#f-${sh.id} .regen`).forEach((b) => b.onclick = () => renderOne(b.dataset.id));
+  bindFrameButtons();
 }
 
 async function budget() {
@@ -322,6 +351,79 @@ async function budget() {
     $("#budget").className = "chip mono " + (b.spent >= b.cap ? "bad" : b.spent ? "warn" : "");
   } catch {}
 }
+
+/* More frames off one chosen frame. They stream in and land as new cards; the
+ * final load() re-renders the scene so they sit in order. */
+async function moreLike(id) {
+  const el = $(`#f-${id} .img`);
+  if (el) el.insertAdjacentHTML("beforeend", `<div class="shimmer"></div>`);
+  await sse(`/shots/${id}/more`, { n: 2, style: $("#bdStyle").value }, {
+    shot_ready: (e) => paint(e.shot),
+    run_end: () => { load(); budget(); },
+  });
+}
+
+/* Tinker one frame with a plain instruction. Same shot, regenerated in place. */
+async function tinker(id) {
+  const instruction = prompt("Tinker this frame. What should change?");
+  if (!instruction || !instruction.trim()) return;
+  const el = $(`#f-${id} .img`);
+  if (el) el.insertAdjacentHTML("beforeend", `<div class="shimmer"></div>`);
+  await sse(`/shots/${id}/tinker`,
+    { instruction: instruction.trim(), style: $("#bdStyle").value }, {
+    shot_ready: (e) => paint(e.shot),
+    run_end: () => { load(); budget(); },
+  });
+}
+
+/* Import a screenplay (paste or PDF) straight onto the board. Raw fetch, because
+ * api() sends JSON and this is multipart. */
+$("#btnImport").onclick = async () => {
+  const text = $("#bdScript").value.trim();
+  const file = $("#bdFile").files[0];
+  if (!text && !file) { trace("import", "paste a script or choose a PDF first", "viol"); return; }
+  const fd = new FormData();
+  if (text) fd.append("text", text);
+  if (file) fd.append("file", file);
+  fd.append("replace", $("#bdReplace").checked ? "true" : "false");
+  $("#btnImport").disabled = true;
+  $$("#itabs button")[1].click();
+  try {
+    const r = await fetch("/api/scenes/import", { method: "POST", body: fd });
+    if (!r.ok) { trace("import", `${r.status} ${(await r.text()).slice(0, 200)}`, "err"); return; }
+    const j = await r.json();
+    trace("import", `${j.imported} scene(s) added, starting at ${j.first_number}`, "done");
+    $("#bdScript").value = ""; $("#bdFile").value = "";
+    await load();
+    $("#bdScene").value = j.first_number;
+    drawBoard();
+  } catch (e) { trace("import", String(e), "err"); }
+  finally { $("#btnImport").disabled = false; }
+};
+
+/* Director chat for the selected scene. Text only: decide coverage before paying
+ * for frames, which is the same order the board itself works in. */
+async function sceneChat() {
+  const n = +$("#bdScene").value;
+  const msg = $("#bdChatMsg").value.trim();
+  if (!msg) return;
+  const log = $("#bdChat");
+  if (log.classList.contains("faint")) { log.classList.remove("faint"); log.innerHTML = ""; }
+  log.insertAdjacentHTML("beforeend", `<div class="turn you"><b>you</b> ${esc(msg)}</div>`);
+  $("#bdChatMsg").value = "";
+  $("#btnChat").disabled = true;
+  log.scrollTop = log.scrollHeight;
+  await sse(`/scenes/${n}/chat`, { message: msg }, {
+    data: (e) => {
+      log.insertAdjacentHTML("beforeend",
+        `<div class="turn dir"><b>director</b> ${esc(e.reply || "")}</div>`);
+      log.scrollTop = log.scrollHeight;
+    },
+  });
+  $("#btnChat").disabled = false;
+}
+$("#btnChat").onclick = sceneChat;
+$("#bdChatMsg").addEventListener("keydown", (e) => { if (e.key === "Enter") sceneChat(); });
 
 /* ------------------------------------------------------------------ the script */
 
@@ -852,19 +954,86 @@ async function loadCanon() {
 
 /* --------------------------------------------------------------------- health */
 
+/* /api/health rather than /healthz: Cloud Run's frontend intercepts /healthz and
+ * returns its own 404 without the request ever reaching the container. Anything
+ * under /api is untouched. */
 async function health() {
   try {
-    const h = await (await fetch("/healthz")).json();
+    const h = await api("/health");
     $("#healthname").textContent = h.ok
       ? `${h.chunks} chunks · ${h.chunks_embedded} embedded · ${h.maps_key ? "maps on" : "no maps key"}`
-      : `degraded · ${h.api_error || h.seed_error}`;
+      : "degraded";
     $("#health").style.color = h.ok ? "var(--ok)" : "var(--bad)";
   } catch { $("#healthname").textContent = "backend unreachable"; }
 }
 
+/* ------------------------------------------------------------------ sign in */
+
+/* Google Identity Services, loaded on demand. No password ever reaches this app
+ * and none is stored: Google issues a signed ID token, the server verifies it
+ * against Google's public keys, and the `sub` claim is the user id. There is no
+ * session table and nothing to forge. */
+function gate(show, msg) {
+  $("#gate").style.display = show ? "grid" : "none";
+  if (msg) $("#gateMsg").textContent = msg;
+}
+
+function signedOut() {
+  TOKEN = null; ME = null;
+  gate(true, "Your session expired. Sign in again to continue.");
+}
+
+function loadGis() {
+  return new Promise((ok, no) => {
+    if (window.google?.accounts?.id) return ok();
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.onload = ok;
+    s.onerror = () => no(new Error("could not reach Google Identity Services"));
+    document.head.append(s);
+  });
+}
+
+async function startAuth(cfg) {
+  await loadGis();
+  google.accounts.id.initialize({
+    client_id: cfg.client_id,
+    callback: async (resp) => {
+      TOKEN = resp.credential;
+      try {
+        ME = await api("/auth/me");
+      } catch (e) { gate(true, String(e.message || e)); return; }
+      gate(false);
+      drawMe();
+      await start();
+    },
+    auto_select: true,               // returning users land straight in
+    cancel_on_tap_outside: false,
+  });
+  google.accounts.id.renderButton($("#gbtn"),
+    { theme: "filled_black", size: "large", shape: "pill",
+      text: "signin_with", logo_alignment: "left" });
+  // One tap for anyone already signed in to Google in this browser.
+  google.accounts.id.prompt();
+}
+
+function drawMe() {
+  const box = $("#who");
+  if (!ME || ME.local) { box.innerHTML = ""; return; }
+  box.innerHTML =
+    `${ME.picture ? `<img src="${safeUrl(ME.picture)}" alt="">` : ""}
+     <span class="tiny">${esc(ME.name || ME.email)}</span>
+     <button class="act" id="signout" style="padding:3px 9px;font-size:11px">sign out</button>`;
+  $("#signout").onclick = () => {
+    google.accounts.id.disableAutoSelect();
+    signedOut();
+  };
+}
+
 /* ----------------------------------------------------------------------- boot */
 
-(async function boot() {
+async function start() {
   await load();
   health();
   budget();
@@ -873,4 +1042,24 @@ async function health() {
   api("/bible/embed", { method: "POST" })
     .then((r) => { health(); trace("bible", `${r.embedded_total}/${r.total} chunks embedded`, "done"); })
     .catch(() => trace("bible", "embedding unavailable, search is lexical only", "viol"));
+}
+
+(async function boot() {
+  let cfg = { enabled: false };
+  try {
+    cfg = await (await fetch("/api/auth/config")).json();
+  } catch { /* auth routes unreachable: fall through to the open app */ }
+
+  if (!cfg.enabled) {
+    // No client id configured, so auth is off and the app runs as one local user.
+    // Deliberate: a half configured login must not be why nothing works.
+    gate(false);
+    return start();
+  }
+  gate(true, "Sign in with Google to continue.");
+  try {
+    await startAuth(cfg);
+  } catch (e) {
+    gate(true, `${e.message}. Check your connection and reload.`);
+  }
 })();

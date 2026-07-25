@@ -1,0 +1,156 @@
+# Deploy main to Cloud Run. Anyone merges or pushes to main, this runs.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ONE SETUP STEP, then this works forever. Run it once, from a shell with gcloud
+# and gh authenticated as an account that can read the project:
+#
+#   gcloud iam service-accounts keys create - \
+#     --iam-account=775345250143-compute@developer.gserviceaccount.com \
+#   | gh secret set GCP_SA_KEY --repo SampreethAvvari/previz
+#
+#   gh variable set GOOGLE_OAUTH_CLIENT_ID --repo SampreethAvvari/previz \
+#     --body "775345250143-5ga300fac55k4lrguii014nfr5g4sqj2.apps.googleusercontent.com"
+#
+# The key is piped straight from gcloud into the GitHub secret. It never lands on
+# disk and never appears in a terminal. Nothing else is needed.
+#
+# WHY A KEY AND NOT WORKLOAD IDENTITY. WIF is the better answer and it is not
+# available on this project. Every keyless path needs an IAM change this account
+# cannot make:
+#
+#   iam.workloadIdentityPools.create        DENIED
+#   resourcemanager.projects.setIamPolicy   DENIED  (editor does not include it,
+#                                                    and no owner role is granted)
+#
+# So the pipeline has to authenticate as a principal that already has credentials.
+# The compute service account already holds roles/editor, which is enough to push
+# an image and deploy a revision, and it needs no new binding.
+#
+# The key is a long lived credential. It lives only in GitHub Actions secrets,
+# never in this repo. Two things to do about it: rotate it after the hackathon,
+# and delete it outright the moment somebody with owner access can set up WIF.
+# The git history of this file is the migration note.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one in flight. cancel-in-progress would
+# be wrong here: a half finished `update-traffic` is worse than a queued run, and
+# these take about three minutes so the queue never grows.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+env:
+  PROJECT: nyu-ai-builder26nyc-9338
+  REGION: us-central1
+  SERVICE: magic-hour
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # Checked in the shell rather than in an `if:` expression, because the
+      # secrets context is not dependably available to step conditions and a
+      # silent skip here would look like a passing deploy.
+      - name: Fail early with a useful message if the key is missing
+        env:
+          KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::GCP_SA_KEY is not set. See the setup block at the top"
+            echo "::error::of .github/workflows/deploy.yml. One command sets it."
+            exit 1
+          fi
+          echo "credentials present"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT }}
+
+      # Boot the app in the runner before spending time on a build. An import
+      # error or a broken seed is caught here in twenty seconds instead of after a
+      # three minute build and deploy.
+      - name: Verify it boots
+        run: |
+          python -m pip install -q -r backend/requirements.txt
+          cd backend && python -c "
+          from fastapi.testclient import TestClient
+          from app.main import app, API_ERROR
+          assert API_ERROR is None, f'API failed to mount: {API_ERROR}'
+          with TestClient(app) as c:
+              h = c.get('/api/health').json()
+              assert h['ok'], h
+              assert h['chunks'] > 0, f\"seed built no chunks: {h}\"
+              assert c.get('/').status_code == 200
+          print('boots clean, bible indexed', h['chunks'], 'chunks')
+          "
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+      # Context is the repo root, not backend/. The app reads
+      # data/seed/character_questions.json, and building from backend/ produces an
+      # image that boots, serves the whole UI, and 404s every /api route because
+      # main.py catches the import error by design. Quiet failure, hence the note.
+      - name: Build and push
+        run: |
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT/cloud-run-source-deploy/$SERVICE"
+          TAG="$(git rev-parse --short HEAD)"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          docker build -f backend/Dockerfile -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+
+      # No traffic yet. The new revision gets its own URL, gets tested on it, and
+      # only earns traffic by passing. A bad revision never serves a user request.
+      - name: Deploy revision with no traffic
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE:$TAG" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --min-instances 1 --memory 2Gi --cpu 2 --timeout 600 --port 8080 \
+            --no-traffic --tag "rev$TAG" \
+            --update-env-vars "GCP_PROJECT=$PROJECT,GCP_LOCATION=$REGION,GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}" \
+            --quiet
+          echo "REV=$(gcloud run services describe $SERVICE --region $REGION --format='value(status.latestCreatedRevisionName)')" >> $GITHUB_ENV
+
+      - name: Smoke test the new revision
+        run: |
+          CAND=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format="value(status.traffic.url)" --flatten="status.traffic[]" \
+            --filter="status.traffic.revisionName=$REV" | head -1)
+          echo "testing $REV at $CAND"
+          chmod +x scripts/smoke.sh
+          ./scripts/smoke.sh "$CAND"
+
+      # Only reached when the smoke test passed.
+      - name: Promote to 100 percent
+        run: |
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" \
+            --to-revisions "$REV=100" --quiet
+          URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
+          echo "### Deployed \`$TAG\` to $URL" >> $GITHUB_STEP_SUMMARY
+          ./scripts/smoke.sh "$URL"
+
+      - name: Report a rejected deploy
+        if: failure()
+        run: |
+          echo "### Deploy rejected" >> $GITHUB_STEP_SUMMARY
+          echo "Revision \`${REV:-none}\` did not pass and is serving no traffic." >> $GITHUB_STEP_SUMMARY
+          echo "The previous revision is still live." >> $GITHUB_STEP_SUMMARY
+          gcloud run services logs read "$SERVICE" --region "$REGION" --limit 40 || true

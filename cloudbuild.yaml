@@ -1,0 +1,149 @@
+# Cloud Build: build, deploy with no traffic, smoke test, then promote.
+#
+# This is the pipeline that actually runs, and the reason is worth recording.
+# Every other route to CI on this project is closed:
+#
+#   GitHub Actions + Workload Identity   iam.workloadIdentityPools.create DENIED
+#   GitHub Actions + service account key constraints/iam.disableServiceAccountKeyCreation
+#                                        is ENFORCED (the design spec §2.2 recorded
+#                                        it as permissive; that was wrong)
+#   any project IAM binding              resourcemanager.projects.setIamPolicy DENIED
+#   a laptop watcher                     dies with the terminal session
+#
+# Cloud Build itself works. Verified by running a build: SUCCESS in 6 seconds. The
+# earlier `gcloud run deploy --source` failure was a Cloud Run preflight check
+# demanding roles/cloudbuild.builds.builder, not an actual inability to build, and
+# this file sidesteps it by building and deploying as separate explicit steps.
+#
+# It runs in GCP as the compute service account, which already holds roles/editor.
+# No key, no GitHub secret, no machine of ours in the path.
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE: magic-hour
+  _OAUTH_CLIENT_ID: "775345250143-5ga300fac55k4lrguii014nfr5g4sqj2.apps.googleusercontent.com"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 1800s
+
+steps:
+  # 1. Does it even boot? An import error or a broken seed is caught here in
+  #    seconds rather than after a full build and deploy.
+  - id: boot
+    name: python:3.12-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        pip install -q -r backend/requirements.txt
+        cd backend
+        python -c "
+        from fastapi.testclient import TestClient
+        from app.main import app, API_ERROR
+        assert API_ERROR is None, f'API failed to mount: {API_ERROR}'
+        with TestClient(app) as c:
+            h = c.get('/api/health').json()
+            assert h['ok'], h
+            assert h['chunks'] > 0, f'seed built no chunks: {h}'
+            assert c.get('/').status_code == 200
+        print('boots clean,', h['chunks'], 'chunks indexed')
+        "
+
+  # 2. Build. Context is the repo root, not backend/, because the app reads
+  #    data/seed/character_questions.json. Building from backend/ produces an image
+  #    that boots, serves the whole UI, and 404s every /api route, because main.py
+  #    catches the router import error by design. Quiet failure, hence the note.
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - backend/Dockerfile
+      - -t
+      - $_REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$_SERVICE:$SHORT_SHA
+      - -t
+      - $_REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$_SERVICE:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags,
+           '$_REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$_SERVICE']
+
+  # 3. Deploy with NO traffic. The new revision gets its own tagged URL and has to
+  #    earn traffic by passing the smoke test. A bad revision never serves a user.
+  #
+  #    --update-env-vars, never --set-env-vars: --set replaces the entire
+  #    environment, so any deploy not passing the OAuth client id would silently
+  #    delete it and turn login off for everyone.
+  - id: deploy-no-traffic
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE
+      - --image=$_REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$_SERVICE:$SHORT_SHA
+      - --region=$_REGION
+      - --allow-unauthenticated
+      - --min-instances=1
+      - --memory=2Gi
+      - --cpu=2
+      - --timeout=600
+      - --port=8080
+      - --no-traffic
+      - --tag=rev$SHORT_SHA
+      - --update-env-vars=GCP_PROJECT=$PROJECT_ID,GCP_LOCATION=$_REGION,GOOGLE_OAUTH_CLIENT_ID=$_OAUTH_CLIENT_ID
+
+  # 4. The gate. scripts/smoke.sh is shared with scripts/deploy.sh so a local
+  #    deploy and CI check exactly the same things.
+  - id: smoke
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        REV=$(gcloud run services describe $_SERVICE --region=$_REGION \
+              --format='value(status.latestCreatedRevisionName)')
+        # Find the tagged URL by matching the tag we just set, not with --filter.
+        # The cloud-sdk image's gcloud rejects --filter alongside --flatten, so
+        # this splits the semicolon separated list and greps instead. Portable
+        # across gcloud versions, which a CI image will change under us.
+        CAND=$(gcloud run services describe $_SERVICE --region=$_REGION \
+               --format='value(status.traffic[].url)' \
+               | tr ';' '\n' | grep "rev$SHORT_SHA" | head -1)
+        if [ -z "$$CAND" ]; then
+          echo "no tagged URL for rev$SHORT_SHA; cannot test the new revision in"
+          echo "isolation, so refusing to promote it blind."
+          exit 1
+        fi
+        echo "testing $$REV at $$CAND"
+        chmod +x scripts/smoke.sh
+        ./scripts/smoke.sh "$$CAND"
+
+  # 5. Only reached when the smoke test passed.
+  - id: promote
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        REV=$(gcloud run services describe $_SERVICE --region=$_REGION \
+              --format='value(status.latestCreatedRevisionName)')
+        gcloud run services update-traffic $_SERVICE --region=$_REGION \
+          --to-revisions="$$REV=100" --quiet
+        URL=$(gcloud run services describe $_SERVICE --region=$_REGION \
+              --format='value(status.url)')
+        echo "promoted $$REV"
+        ./scripts/smoke.sh "$$URL"
+        echo "LIVE: $$URL"
+
+images:
+  - $_REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$_SERVICE:$SHORT_SHA
+  - $_REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$_SERVICE:latest

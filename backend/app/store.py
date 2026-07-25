@@ -22,9 +22,16 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 
-DATA = Path(__file__).resolve().parents[2] / "data"
+_HERE = Path(__file__).resolve()
+# In the repo, data/ sits beside backend/. In the container the layout is flatter,
+# so it sits beside app/. Resolved by looking rather than assumed, because getting
+# it wrong makes questions.py raise at import, which main.py catches, which means
+# the app boots and serves the UI and then 404s every /api route. A quiet failure
+# is worth three lines to prevent.
+DATA = next((p for p in (_HERE.parents[2] / "data", _HERE.parents[1] / "data")
+             if p.is_dir()), _HERE.parents[2] / "data")
 SEED = DATA / "seed"
-CACHE = Path(__file__).resolve().parents[1] / "demo_cache"
+CACHE = _HERE.parents[1] / "demo_cache"
 
 
 def _id() -> str:

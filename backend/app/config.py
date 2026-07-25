@@ -11,6 +11,12 @@ class Settings(BaseSettings):
 
     google_maps_api_key: str = ""
 
+    # Google Sign-In. An OAuth 2.0 Web client id from
+    # console.cloud.google.com/apis/credentials. Empty means auth is DISABLED and
+    # everyone runs as one local user, so the app still boots and demos without a
+    # console round trip. See app/auth.py.
+    google_oauth_client_id: str = ""
+
     max_shots: int = 6
     max_tool_calls: int = 15
     # Hard ceiling per story so a retry loop cannot eat the budget. The lab
