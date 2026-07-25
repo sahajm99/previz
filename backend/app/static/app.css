@@ -296,6 +296,18 @@ label.lab {
 }
 @keyframes sweep { to { background-position: -220% 0; } }
 
+/* ------------------------------------------------------------- director chat */
+
+.chatlog { max-height: 280px; overflow: auto; display: flex; flex-direction: column; gap: 9px; }
+.chatlog .turn { line-height: 1.5; }
+.chatlog .turn b {
+  display: inline-block; margin-right: 6px;
+  font: 600 9.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.chatlog .turn.dir { color: var(--ink); }
+.chatlog .turn.you { color: var(--ink-dim); }
+
 /* --------------------------------------------------------------- screenplay */
 
 .script {

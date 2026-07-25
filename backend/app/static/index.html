@@ -165,6 +165,25 @@
     <!-- Board ------------------------------------------------------------- -->
     <section class="surface" data-s="board">
       <div class="panel pad" style="margin-bottom:14px">
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div style="flex:1;min-width:280px">
+            <label class="lab">Import a script · paste, or upload a PDF</label>
+            <textarea class="f" id="bdScript" placeholder="Paste screenplay text with INT./EXT. sluglines"></textarea>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <input class="f" id="bdFile" type="file" accept=".pdf,.txt,.fountain" style="padding:7px">
+            <label class="tiny faint" style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;margin:0">
+              <input type="checkbox" id="bdReplace"> replace existing scenes</label>
+            <button class="act primary" id="btnImport">Import scenes</button>
+          </div>
+        </div>
+        <div class="tiny faint" style="margin-top:9px">
+          Parsed into scenes and dropped onto the board. Text is free, so this
+          makes no images. Pick a scene below and plan its shots.
+        </div>
+      </div>
+
+      <div class="panel pad" style="margin-bottom:14px">
         <div style="display:flex;gap:10px;align-items:flex-end">
           <div style="width:210px">
             <label class="lab">Scene</label>
@@ -192,6 +211,15 @@
         </div>
       </div>
       <div class="grid frames" id="board"></div>
+
+      <div class="panel pad" style="margin-top:16px">
+        <div class="eyebrow">Director chat · talk the scene through before you render</div>
+        <div id="bdChat" class="chatlog faint tiny">Ask about coverage, framing or mood for the selected scene.</div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input class="f" id="bdChatMsg" placeholder="how should I cover the moment she realises?">
+          <button class="act" id="btnChat" style="white-space:nowrap">Send</button>
+        </div>
+      </div>
     </section>
 
     <!-- Cast -------------------------------------------------------------- -->

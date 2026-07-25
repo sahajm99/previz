@@ -11,9 +11,11 @@ each plus real money.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.config import settings
@@ -179,16 +181,239 @@ def render_one(shot_id: str, body: RenderIn, story_id: str | None = None):
     return stream(work, agent="ShotPromptWriter")
 
 
+class MoreIn(BaseModel):
+    n: int = 2
+    style: str = "realistic"
+    instruction: str = ""
+
+
+@router.post("/shots/{shot_id}/more")
+def more_like(shot_id: str, body: MoreIn, story_id: str | None = None):
+    """More frames off one chosen frame. Each is a fresh shot conditioned on the
+    frame you liked, so it stays the same person, lighting and world (§6.2).
+    """
+    sid = _sid(story_id)
+    try:
+        sc, src = store.shot(sid, shot_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+    def work(emit):
+        from app.images import load_png
+        seed = load_png(src.image_url) if src.image_url else None
+        n = max(1, min(body.n, 4))
+        note = body.instruction.strip()
+        emit.thinking(f"{n} more like shot {src.number}"
+                      + (f": {note}" if note else ""), agent="ShotPromptWriter")
+        made = []
+        for _ in range(n):
+            desc = f"{src.description} ({note})" if note else src.description
+            made.append(store.add_shot(
+                sid, sc.id, desc, shot_size=src.shot_size, angle=src.angle,
+                lens=src.lens, movement=src.movement, subject=src.subject,
+                characters=list(src.characters)))
+        _render_shots(emit, sid, sc, made, body.style, carry=True,
+                      seed_frame=seed)
+        return {"added": len(made)}
+
+    return stream(work, agent="ShotPromptWriter")
+
+
+class TinkerIn(BaseModel):
+    instruction: str
+    style: str = "realistic"
+
+
+@router.post("/shots/{shot_id}/tinker")
+def tinker_shot(shot_id: str, body: TinkerIn, story_id: str | None = None):
+    """Nudge one frame with a plain instruction ("make it rain harder"). Same
+    shot, regenerated conditioned on its own current frame plus the instruction.
+    """
+    sid = _sid(story_id)
+    instruction = body.instruction.strip()
+    if not instruction:
+        raise HTTPException(400, "instruction is required")
+    try:
+        sc, sh = store.shot(sid, shot_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+    def work(emit):
+        from app.images import load_png
+        seed = load_png(sh.image_url) if sh.image_url else None
+        emit.thinking(f"tinkering shot {sh.number}: {instruction}",
+                      agent="ShotPromptWriter")
+        _render_shots(emit, sid, sc, [sh], body.style, carry=True,
+                      seed_frame=seed, extra_direction=instruction)
+        return {"shot_id": sh.id}
+
+    return stream(work, agent="ShotPromptWriter")
+
+
+class ChatIn(BaseModel):
+    message: str
+
+
+@router.post("/scenes/{number}/chat")
+def scene_chat(number: int, body: ChatIn, story_id: str | None = None):
+    """Talk a scene's coverage through in text, before any image is paid for.
+
+    Grounded in the same Continuity Pack the shot planner uses, so the director's
+    suggestions do not contradict the bible or leak past the knowledge horizon.
+    """
+    sid = _sid(story_id)
+    st = store.story(sid)
+    sc = st.scene_by_number(number)
+    if not sc:
+        raise HTTPException(404, f"no scene {number}")
+    msg = body.message.strip()
+    if not msg:
+        raise HTTPException(400, "message is required")
+
+    def work(emit):
+        from google.genai import types
+
+        from app.bible import build_pack
+        from app.consistency import _SAFETY, _client
+        from app.voice import REASONING_MODEL
+
+        pack = build_pack(sid, query=f"{sc.slugline} {msg}",
+                          character_ids=sc.characters, scene_number=number)
+        emit.context(pack.report()["slots"], pack.chunk_ids, pack.dropped)
+        emit.thinking("thinking about the scene", agent="Director")
+        cast_names = [st.characters[c].name for c in sc.characters
+                      if c in st.characters]
+        resp = _client().models.generate_content(
+            model=REASONING_MODEL,
+            contents=(
+                "You are a film director helping plan the visual coverage of a "
+                "scene. Answer the filmmaker briefly and concretely: suggest "
+                "shots, framing, blocking, lensing or mood, and ground every "
+                "suggestion in this scene. Do not write dialogue.\n\n"
+                f"{pack.text()}\n\n"
+                f"SCENE {number}: {sc.slugline}\n{sc.synopsis}\n"
+                + (f"\nSCENE TEXT:\n{sc.body[:1500]}" if sc.body else "")
+                + f"\nCHARACTERS PRESENT: {', '.join(cast_names) or 'none'}\n\n"
+                f"FILMMAKER: {msg}"),
+            config=types.GenerateContentConfig(safety_settings=_SAFETY),
+        )
+        return {"reply": (resp.text or "").strip()}
+
+    return stream(work, agent="Director")
+
+
+def _extract_script_text(file: UploadFile | None, text: str) -> str:
+    """Pasted text wins. Otherwise pull text out of the upload: PDF via pypdf,
+    anything else decoded as utf-8 (a .txt or .fountain screenplay).
+    """
+    if text and text.strip():
+        return text
+    if file is None:
+        return ""
+    raw = file.file.read()
+    name = (file.filename or "").lower()
+    if name.endswith(".pdf") or raw[:5] == b"%PDF-":
+        try:
+            import io
+
+            import pypdf
+        except Exception as exc:                        # pypdf not installed
+            raise HTTPException(
+                400, "PDF import needs the pypdf package. Paste the script text "
+                     "instead, or add pypdf to requirements.") from exc
+        reader = pypdf.PdfReader(io.BytesIO(raw))
+        return "\n".join((p.extract_text() or "") for p in reader.pages)
+    return raw.decode("utf-8", errors="ignore")
+
+
+_NUM_SLUG = re.compile(
+    r"^\s*\d+[.)]?\s+((?:INT|EXT|EST|I/E|INT\./EXT)\b.*?)(?:\s+\d+)?\s*$", re.I)
+
+
+def _normalize_script(text: str) -> str:
+    """Help the heading detector find sluglines in text pulled out of a PDF,
+    where they often arrive numbered ("12 INT. BUS DEPOT - NIGHT"). The detector
+    needs a line to START with INT./EXT., so strip a leading scene number.
+    """
+    out = []
+    for ln in text.splitlines():
+        m = _NUM_SLUG.match(ln)
+        out.append(m.group(1).strip() if m else ln)
+    return "\n".join(out)
+
+
+@router.post("/scenes/import")
+def import_script(file: UploadFile | None = File(None),
+                  text: str = Form(""), replace: bool = Form(False),
+                  story_id: str | None = None):
+    """Upload a PDF or paste a screenplay, split it into scenes, and put them on
+    the board. Parsing is text, so it is instant and free: no image is made here.
+    """
+    from app import screenplay
+
+    sid = _sid(story_id)
+    st = store.story(sid)
+    script_text = _extract_script_text(file, text)
+    if not script_text.strip():
+        raise HTTPException(400, "no script text found in the upload")
+
+    parsed = screenplay.split_scenes(
+        screenplay.parse(_normalize_script(script_text)))
+    if not parsed:
+        raise HTTPException(400, "could not find any scenes in the script")
+
+    if replace:
+        st.scenes.clear()
+    start = max((s.number for s in st.scenes.values()), default=0) + 1
+
+    for i, scd in enumerate(parsed):
+        number = start + i
+        lines = scd.get("lines", [])
+        body = screenplay.to_text(lines) if lines else ""
+        # A headingless chunk (text before the first slugline) parses with an
+        # empty slugline, so fall back to a numbered name or the scene shows blank.
+        slug = (scd.get("slugline") or "").strip() or f"SCENE {number}"
+        synopsis = (next((ln.text for ln in lines
+                          if getattr(ln, "type", "") == "action"
+                          and ln.text.strip()), "").strip()
+                    or body.strip()[:160] or slug)[:200]
+        char_ids: list[str] = []
+        for nm in (screenplay.speaking(lines) if lines else []):
+            c = st.character_by_name(nm)
+            if c and c.id not in char_ids:
+                char_ids.append(c.id)
+        store.add_scene(sid, number, slug, synopsis=synopsis, body=body,
+                        int_ext=scd.get("int_ext") or "INT",
+                        time_of_day=scd.get("time_of_day") or "DAY",
+                        characters=char_ids)
+
+    try:
+        from app.bible import reindex_story
+        reindex_story(sid)
+    except Exception as exc:                            # noqa: BLE001
+        print(f"  import reindex skipped: {type(exc).__name__}: {exc}")
+
+    return {"imported": len(parsed), "first_number": start,
+            "scenes": st.scene_index()}
+
+
 def _render_shots(emit, sid: str, sc, shots: list, style: str,
-                  carry: bool) -> str | None:
-    """The generation loop. Shared by the whole scene and the single shot path."""
+                  carry: bool, seed_frame: bytes | None = None,
+                  extra_direction: str = "") -> str | None:
+    """The generation loop. Shared by the whole scene and the single shot path.
+
+    `seed_frame` conditions the first frame on a specific image instead of the
+    previous shot in sequence, which is what "generate more" and "tinker" build
+    off. `extra_direction` rides along in the prompt (a tinker instruction)
+    without being stored on the shot.
+    """
     from app.api.cast import CARDS
     from app.consistency import IdentityCard, generate_shot_with_referee
     from app.images import load_png, save_png
 
     st = store.story(sid)
-    previous: bytes | None = None
-    if carry:
+    previous: bytes | None = seed_frame
+    if previous is None and carry:
         earlier = [s for s in sc.shots if s.image_url
                    and s.number < min(x.number for x in shots)]
         if earlier:
@@ -240,6 +465,8 @@ def _render_shots(emit, sid: str, sc, shots: list, style: str,
                           if cid in sh.characters and v.get("physical")]
             if cont_notes:
                 desc += " Continuity: " + "; ".join(cont_notes) + "."
+            if extra_direction:
+                desc += " " + extra_direction.strip()
             frame, verdicts, attempts = generate_shot_with_referee(
                 f"{sh.shot_size}, {sh.angle} angle, {sh.lens}, "
                 f"{sh.movement}. {desc}",
@@ -250,7 +477,7 @@ def _render_shots(emit, sid: str, sc, shots: list, style: str,
                        retryable="RESOURCE_EXHAUSTED" in str(exc))
             continue
 
-        sh.image_url = save_png(frame, f"shot_{sh.id}_v{sh.number}")
+        sh.image_url = save_png(frame, f"shot_{sh.id}_{uuid4().hex[:6]}")
         sh.attempts = attempts
         sh.style_preset = style
         name_to_id = {st.characters[c].name: c for c in sh.characters
