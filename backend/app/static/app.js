@@ -649,6 +649,8 @@ function drawLocs(customList = null) {
         </div>
       </div>` : "";
 
+    const svLink = (l.lat && l.lng) ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${l.lat},${l.lng}` : safeUrl(l.maps_url);
+
     return `
     <div class="panel pad" style="position:relative;display:flex;flex-direction:column;justify-content:space-between">
       <div>
@@ -670,7 +672,7 @@ function drawLocs(customList = null) {
           ${l.shortlisted ? "★ Shortlisted" : "☆ Shortlist"}</button>
         <button class="act sim" data-id="${l.id}" style="padding:4px 10px;font-size:12px">🔍 Similar</button>
         <button class="act add-canvas" data-id="${l.id}" data-name="${esc(l.name)}" style="padding:4px 10px;font-size:12px">📍 Add to Canvas</button>
-        <a class="act" href="${safeUrl(l.maps_url)}" target="_blank" rel="noreferrer" style="margin-left:auto;padding:4px 10px;font-size:12px;text-decoration:none;background:rgba(255,255,255,0.07);color:#fff;border-radius:4px">🗺️ Open Map</a>
+        <a class="act" href="${svLink}" target="_blank" rel="noreferrer" style="margin-left:auto;padding:4px 10px;font-size:12px;text-decoration:none;background:rgba(255,255,255,0.07);color:#fff;border-radius:4px" title="Open 360° Street View in Google Maps">🗺️ Street View ↗</a>
       </div>
     </div>`;
   }).join("");
