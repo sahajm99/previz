@@ -1,22 +1,31 @@
-FROM python:3.11-slim
+# Magic Hour, one container.
+#
+# BUILD CONTEXT IS THE REPO ROOT:
+#     docker build -f Dockerfile .
+#     gcloud run deploy --source .          (from the repo root)
+#
+FROM python:3.12-slim
 
-WORKDIR /app/backend
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app/backend
+WORKDIR /app
 
-# Install dependencies
-COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/backend/requirements.txt
+# Requirements first so a code change does not reinstall the dependency layer.
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend application and static UI
-COPY backend/ /app/backend/
+COPY backend/app ./app
+COPY backend/demo_cache ./demo_cache
+# The 100 questions and the seed fixtures. store.DATA looks for a data/ directory
+# beside backend/ and then beside app/, so this flatter layout resolves without a
+# path shim.
+COPY data ./data
 
-# Create demo cache directories for disk persistence
-RUN mkdir -p /app/backend/demo_cache/locations
-
-EXPOSE 8000
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Cloud Run injects PORT. Uvicorn must bind 0.0.0.0 or the container looks dead to
+# the health check. One worker on purpose: the store is in process memory, so a
+# second worker would serve a different story from the first.
+ENV PORT=8080
+EXPOSE 8080
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers 1"]
