@@ -19,13 +19,8 @@
   <div class="gatecard">
     <div class="mark" style="margin:0 auto 18px">M</div>
     <h2>Magic Hour</h2>
-    <p class="tiny muted" id="gateMsg">Sign in with Google to continue.</p>
+    <p class="tiny muted" id="gateMsg">Sign in to continue.</p>
     <div id="gbtn"></div>
-    <p class="tiny faint" style="margin-top:18px">
-      Any Google account works. We never see or store a password, and there is no
-      session to steal: Google signs a token and the server checks the signature
-      on every request.
-    </p>
   </div>
 </div>
 
@@ -36,27 +31,27 @@
     <div class="mark">M</div>
     <button class="tab on" data-s="bible" style="--tint:var(--bible)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5.5A2 2 0 016 3.5h12v17H6a2 2 0 01-2-2z"/><path d="M8 7.5h7M8 11h7"/></svg>
-      <span class="name">Bible · the knowledge layer</span>
+      <span class="name">Bible</span>
     </button>
     <button class="tab" data-s="script" style="--tint:var(--script)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 3.5h9l5 5v12H5z"/><path d="M14 3.5v5h5M8 13h8M8 16.5h5"/></svg>
-      <span class="name">Script · the screenplay</span>
+      <span class="name">Script</span>
     </button>
     <button class="tab" data-s="board" style="--tint:var(--board)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5.5" width="18" height="13" rx="1.6"/><path d="M3 9.5h18M8 5.5v4M16 5.5v4"/></svg>
-      <span class="name">Board · storyboards</span>
+      <span class="name">Board</span>
     </button>
     <button class="tab" data-s="cast" style="--tint:var(--cast)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 20.5c0-3.9 3.1-6.4 7-6.4s7 2.5 7 6.4"/></svg>
-      <span class="name">Cast · the 100 questions</span>
+      <span class="name">Cast</span>
     </button>
     <button class="tab" data-s="scout" style="--tint:var(--scout)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21.5s7-6.3 7-11.4A7 7 0 005 10.1c0 5.1 7 11.4 7 11.4z"/><circle cx="12" cy="10" r="2.5"/></svg>
-      <span class="name">Scout · real locations</span>
+      <span class="name">Scout</span>
     </button>
     <button class="tab" data-s="muse" style="--tint:var(--muse)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 9.6 9.6 0 01-2.7-.4L4 21l1.4-4.1A8.1 8.1 0 013 11.5a8.4 8.4 0 019-8.4 8.4 8.4 0 019 8.4z"/></svg>
-      <span class="name">Muse · talk it through</span>
+      <span class="name">Muse</span>
     </button>
     <div class="spacer"></div>
     <button class="tab" id="health">
@@ -68,7 +63,7 @@
   <main id="work">
     <header class="bar">
       <h1 id="title">Magic Hour</h1>
-      <span class="sub" id="logline">loading the bible</span>
+      <span class="sub" id="logline">loading</span>
       <span class="right">
         <span id="who"></span>
         <span class="chip mono" id="budget">· / ·</span>
@@ -80,13 +75,8 @@
     <section class="surface on" data-s="bible">
       <div class="grid two" style="margin-bottom:14px">
         <div class="panel lit pad">
-          <div class="eyebrow">Search the bible</div>
+          <div class="eyebrow">Search</div>
           <input class="f" id="q" placeholder="what does Maya know about the night route">
-          <div class="tiny faint" style="margin-top:8px">
-            Hybrid: cosine over the chunks and token overlap, fused by reciprocal
-            rank. Canon outranks draft at equal relevance. Results land in the
-            Context tab.
-          </div>
         </div>
         <div class="panel pad">
           <div class="eyebrow">The story</div>
@@ -97,26 +87,19 @@
            of one assembled Continuity Pack, so this is where a wrong line gets
            traced to the fact behind it rather than argued about. -->
       <div class="panel lit pad" style="margin-bottom:20px">
-        <div class="eyebrow">Context Inspector · the exact payload a model receives</div>
+        <div class="eyebrow">Context Inspector</div>
         <div class="ci-controls">
           <div>
             <label class="lab">Scene</label>
             <select class="f" id="ciScene"></select>
           </div>
           <div>
-            <label class="lab">Retrieval query</label>
+            <label class="lab">Query</label>
             <input class="f" id="ciQuery" placeholder="what does Ravi know about the route">
           </div>
           <button class="act" id="ciRun">Assemble</button>
         </div>
         <div class="ci-cast" id="ciCast"></div>
-        <div class="tiny faint" style="margin-top:9px">
-          Fixed slots, fixed budgets, assembled by one function for every call in
-          the product. On overflow the pack drops turn, then local, then
-          retrieved, and never style or cast, because those are the identity.
-          Click a slot to read it verbatim, and a chunk id to open the row it came
-          from.
-        </div>
         <div id="ciOut"></div>
       </div>
 
@@ -137,17 +120,12 @@
             <select class="f" id="scScene"></select>
           </div>
           <div style="flex:1">
-            <label class="lab">What this beat has to do · optional</label>
+            <label class="lab">Intent</label>
             <input class="f" id="scIntent" placeholder="he still does not understand what he has lost">
           </div>
           <button class="act" id="btnAction">Write action</button>
           <button class="act primary" id="btnDialogue">Write dialogue</button>
           <button class="act" id="btnSupervise">Supervise</button>
-        </div>
-        <div class="tiny faint" style="margin-top:9px">
-          One sub-agent per character, each built from its own Voice Card verbatim
-          and bounded by what that character knows as of this scene. Every line is
-          scored against their voice fingerprint.
         </div>
       </div>
       <div class="grid" style="grid-template-columns:1fr 300px">
@@ -156,7 +134,7 @@
           <div class="script" id="pages"></div>
         </div>
         <div>
-          <div class="eyebrow">Lines and their scores</div>
+          <div class="eyebrow">Lines</div>
           <div id="lines"></div>
         </div>
       </div>
@@ -204,11 +182,6 @@
           <button class="act" id="btnPlan">Plan shots</button>
           <button class="act primary" id="btnRender">Render board</button>
         </div>
-        <div class="tiny faint" style="margin-top:9px">
-          All the deciding happens in text before any image is paid for. Each
-          frame is conditioned on the locked reference sheet and the Identity Card
-          verbatim, then scored against the face fingerprint.
-        </div>
       </div>
       <div class="grid frames" id="board"></div>
 
@@ -229,7 +202,7 @@
           <div class="eyebrow">Characters</div>
           <div id="castList"></div>
           <div class="panel pad" style="margin-top:12px">
-            <label class="lab">Add a character</label>
+            <label class="lab">New character</label>
             <input class="f" id="newName" placeholder="name">
             <button class="act" id="btnAddChar" style="margin-top:8px;width:100%">Create</button>
           </div>
@@ -246,7 +219,7 @@
       <div class="panel pad" style="margin-bottom:14px">
         <div style="display:flex;gap:10px;align-items:flex-end">
           <div style="flex:1">
-            <label class="lab">What the scene needs</label>
+            <label class="lab">Scene needs</label>
             <input class="f" id="scoutNeed" placeholder="a working bus depot with a yard you can shoot at night">
           </div>
           <div style="width:180px">
@@ -265,12 +238,7 @@
 
     <!-- Muse -------------------------------------------------------------- -->
     <section class="surface" data-s="muse">
-      <div class="empty">
-        Muse is not wired yet. The transport seam is specified: one
-        <span class="mono">POST /api/muse/turn</span> taking <span class="mono">{text}</span>
-        and returning the same SSE envelope every other surface uses, so adding it
-        touches no agent, tool or context code.
-      </div>
+      <div class="empty">Muse · coming soon</div>
     </section>
   </main>
 
@@ -283,20 +251,16 @@
     </div>
     <div class="ipane on" data-i="ctx">
       <div class="eyebrow">Continuity Pack</div>
-      <div id="slots" class="faint tiny">Run anything and the exact context it received appears here.</div>
+      <div id="slots" class="faint tiny">Run anything to see the context it received.</div>
       <div class="eyebrow" style="margin-top:18px">Retrieved</div>
       <div id="hits" class="faint tiny">No search yet.</div>
     </div>
     <div class="ipane" data-i="trace">
-      <div class="eyebrow">Live agent trace</div>
+      <div class="eyebrow">Trace</div>
       <div id="trace" class="faint tiny">Idle.</div>
     </div>
     <div class="ipane" data-i="canon">
-      <div class="eyebrow">Pending proposals</div>
-      <div class="tiny faint" style="margin-bottom:10px">
-        Agents cannot write canon. They propose, with the reasoning that produced
-        it, and a person promotes.
-      </div>
+      <div class="eyebrow">Proposals</div>
       <div id="canon"></div>
     </div>
   </aside>
