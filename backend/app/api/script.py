@@ -419,6 +419,12 @@ class LineIn(BaseModel):
     parenthetical: str = ""
     brief: str = ""          # overrides the scene synopsis if given
     on_page: str = ""        # the canvas as it stands, unsaved edits included
+    # The feedback loop. `previous` is the line being revised and `note` is the
+    # director's note on it. Both ride to the SAME sub-agent as direction, the way
+    # a director talks to an actor. The Voice Card is never edited by feedback:
+    # a note changes this line, canon changes the character.
+    note: str = ""
+    previous: str = ""
 
 
 @router.post("/scenes/{number}/next-line")
@@ -490,6 +496,14 @@ def next_line(number: int, body: LineIn, story_id: str | None = None):
             f"cannot refer to anything else.", agent=agent_name)
 
         heard = _heard_from(body.on_page or sc.body)
+        if body.previous or body.note:
+            emit.thinking(f"director's note taken: "
+                          f"{body.note or 'same moment, differently'}",
+                          agent=agent_name)
+            heard = heard + [
+                f"(Director's note. Your line \"{body.previous}\" was cut. "
+                f"{body.note or 'Do the same moment differently.'} "
+                f"Same moment, same scene, still you.)"]
         line = speak(card, brief, mine, state, heard)
         v = referee_line(line, card)
         attempts = 1
@@ -715,6 +729,8 @@ def exchange(number: int, body: ExchangeIn, story_id: str | None = None):
 class ActionLineIn(BaseModel):
     intent: str = ""
     on_page: str = ""
+    note: str = ""           # director's note on the previous attempt
+    previous: str = ""       # the paragraph being revised
 
 
 @router.post("/scenes/{number}/next-action")
@@ -757,6 +773,9 @@ def next_action(number: int, body: ActionLineIn, story_id: str | None = None):
                 + (f"\nTHE PAGE SO FAR:\n{page}" if page else "")
                 + (f"\n\nWHAT THIS PARAGRAPH MUST DO: {body.intent}"
                    if body.intent else "")
+                + (f"\n\nYOUR PREVIOUS ATTEMPT, cut by the director:\n"
+                   f"{body.previous}" if body.previous else "")
+                + (f"\nTHE DIRECTOR'S NOTE: {body.note}" if body.note else "")
                 + "\n\nReturn JSON {\"action\": \"...\"} with EXACTLY ONE "
                   "paragraph, at most four lines."),
             config=types.GenerateContentConfig(
