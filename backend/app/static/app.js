@@ -389,7 +389,12 @@ $("#btnImport").onclick = async () => {
   $("#btnImport").disabled = true;
   $$("#itabs button")[1].click();
   try {
-    const r = await fetch("/api/scenes/import", { method: "POST", body: fd });
+    // authHeaders(false): sends the Bearer token but no Content-Type, so the
+    // browser sets the multipart boundary itself. A raw fetch skips the token
+    // and the guarded route answers 401.
+    const r = await fetch("/api/scenes/import",
+      { method: "POST", body: fd, headers: authHeaders(false) });
+    if (r.status === 401) { signedOut(); trace("import", "sign in required", "err"); return; }
     if (!r.ok) { trace("import", `${r.status} ${(await r.text()).slice(0, 200)}`, "err"); return; }
     const j = await r.json();
     trace("import", `${j.imported} scene(s) added, starting at ${j.first_number}`, "done");
