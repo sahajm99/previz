@@ -1,30 +1,9 @@
-import httpx
-from app.config import settings
-from app.models import LocationSuggestion
-
-_URL = "https://places.googleapis.com/v1/places:searchText"
+from app.agents.location_scout_agent import scout_agent
+from app.models import LocationSuggestion, VibeSearchRequest
 
 def find_locations(scene_description: str, region: str | None = None) -> list[LocationSuggestion]:
-    query = scene_description if not region else f"{scene_description} in {region}"
-    headers = {
-        "X-Goog-Api-Key": settings.google_maps_api_key,
-        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.id",
-    }
     try:
-        r = httpx.post(_URL, headers=headers, json={"textQuery": query, "maxResultCount": 3}, timeout=10)
-        r.raise_for_status()
-        places = r.json().get("places", [])
-        out = []
-        for p in places[:3]:
-            loc = p.get("location") or {}
-            pid = p.get("id", "")
-            name = (p.get("displayName") or {}).get("text", "Unknown")
-            out.append(LocationSuggestion(
-                name=name,
-                address=p.get("formattedAddress") or "",
-                lat=loc.get("latitude", 0.0), lng=loc.get("longitude", 0.0),
-                maps_url=f"https://www.google.com/maps/place/?q=place_id:{pid}",
-            ))
-        return out
+        req = VibeSearchRequest(query=scene_description, region=region, limit=3)
+        return scout_agent.scout_locations(req, fallback_to_seed=False)
     except Exception:
         return []
