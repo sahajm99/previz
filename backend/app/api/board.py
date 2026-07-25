@@ -342,12 +342,54 @@ def _normalize_script(text: str) -> str:
     return "\n".join(out)
 
 
+def _characters_in(lines) -> list[str]:
+    """Distinct speaking-character names in a scene, in order of first appearance."""
+    from app import screenplay
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for nm in screenplay.speaking(lines or []):
+        key = (nm or "").strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(nm.strip())
+    return out
+
+
+def _title_from(file, parsed) -> str:
+    """A cheap title for the imported story: the file name, else the first
+    location. No model call, so import stays instant and works offline.
+    """
+    if file is not None and file.filename:
+        stem = file.filename.replace("\\", "/").rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        stem = re.sub(r"[-_]+", " ", stem).strip()
+        if stem:
+            return stem.title()[:80]
+    first = parsed[0] if parsed else {}
+    return ((first.get("location") or first.get("slugline") or "").strip()
+            or "Imported Script")[:80]
+
+
+def _appearances(st, cid: str) -> int:
+    return sum(1 for sc in st.scenes.values() if cid in sc.characters)
+
+
+def _rank_leads(st, char_ids: list[str], limit: int) -> list[str]:
+    """The characters who carry the story, by how many scenes they are in."""
+    present = [c for c in char_ids if _appearances(st, c) > 0]
+    return sorted(present, key=lambda c: _appearances(st, c), reverse=True)[:limit]
+
+
 @router.post("/scenes/import")
 def import_script(file: UploadFile | None = File(None),
-                  text: str = Form(""), replace: bool = Form(False),
+                  text: str = Form(""), replace: bool = Form(True),
                   story_id: str | None = None):
-    """Upload a PDF or paste a screenplay, split it into scenes, and put them on
-    the board. Parsing is text, so it is instant and free: no image is made here.
+    """Upload a PDF or paste a screenplay and rebuild the story around it: one
+    script, one story, one bible.
+
+    Parsing and character registration are text, so this is instant and free. It
+    registers every speaking character but generates no image. Casting the leads
+    (their reference sheets) is a separate streamed step: POST /api/board/cast-leads.
     """
     from app import screenplay
 
@@ -362,10 +404,30 @@ def import_script(file: UploadFile | None = File(None),
     if not parsed:
         raise HTTPException(400, "could not find any scenes in the script")
 
+    # Replace: wipe the current story so the bible, cast and scenes all belong to
+    # this script, and nothing bleeds in from whatever story was here before.
     if replace:
         st.scenes.clear()
+        st.characters.clear()
+        st.locations.clear()
+        st.proposals.clear()
+        st.title = _title_from(file, parsed)
+        st.logline = ""
+        st.summary = ""
     start = max((s.number for s in st.scenes.values()), default=0) + 1
 
+    # First pass: register every distinct speaking character, once.
+    name_to_id: dict[str, str] = {}
+    for scd in parsed:
+        for nm in _characters_in(scd.get("lines", [])):
+            key = nm.lower()
+            if key in name_to_id:
+                continue
+            existing = None if replace else st.character_by_name(nm)
+            c = existing or store.add_character(sid, nm.title())
+            name_to_id[key] = c.id
+
+    # Second pass: create the scenes, binding each to the characters in it.
     for i, scd in enumerate(parsed):
         number = start + i
         lines = scd.get("lines", [])
@@ -378,10 +440,10 @@ def import_script(file: UploadFile | None = File(None),
                           and ln.text.strip()), "").strip()
                     or body.strip()[:160] or slug)[:200]
         char_ids: list[str] = []
-        for nm in (screenplay.speaking(lines) if lines else []):
-            c = st.character_by_name(nm)
-            if c and c.id not in char_ids:
-                char_ids.append(c.id)
+        for nm in _characters_in(lines):
+            cid = name_to_id.get(nm.lower())
+            if cid and cid not in char_ids:
+                char_ids.append(cid)
         store.add_scene(sid, number, slug, synopsis=synopsis, body=body,
                         int_ext=scd.get("int_ext") or "INT",
                         time_of_day=scd.get("time_of_day") or "DAY",
@@ -393,8 +455,115 @@ def import_script(file: UploadFile | None = File(None),
     except Exception as exc:                            # noqa: BLE001
         print(f"  import reindex skipped: {type(exc).__name__}: {exc}")
 
+    lead_ids = _rank_leads(st, list(name_to_id.values()), limit=2)
     return {"imported": len(parsed), "first_number": start,
-            "scenes": st.scene_index()}
+            "title": st.title,
+            "scenes": st.scene_index(),
+            "characters": [{"id": cid, "name": st.characters[cid].name}
+                           for cid in name_to_id.values() if cid in st.characters],
+            "leads": [{"id": cid, "name": st.characters[cid].name}
+                      for cid in lead_ids]}
+
+
+def _answers_from_script(st, c) -> dict[str, str]:
+    """Infer answers to the core character questions from the script itself, so a
+    character pulled out of a screenplay can be cast without a manual interview.
+    The answers are the same {question_text: answer} contract the interview
+    produces, so the existing card compilers consume them unchanged.
+    """
+    import json as _json
+
+    from google.genai import types
+
+    from app.consistency import _SAFETY, _client
+    from app.questions import core_questions
+    from app.voice import REASONING_MODEL
+
+    ctx = "\n\n".join(sc.body for sc in st.scenes.values()
+                      if c.id in sc.characters and sc.body)[:6000]
+    core = core_questions()
+    resp = _client().models.generate_content(
+        model=REASONING_MODEL,
+        contents=(
+            f"From this screenplay, infer who the character {c.name} is. Answer "
+            f"each question in first person as {c.name}, one to three sentences, "
+            f"concrete and specific. Where the script does not say, invent a "
+            f"plausible, specific detail that fits it. Never hedge.\n\n"
+            f"SCRIPT:\n{ctx or c.name}\n\n"
+            + "\n".join(f"{i + 1}. {q['text']}" for i, q in enumerate(core))
+            + f"\n\nReturn JSON {{\"answers\": [\"...\"]}} with exactly "
+              f"{len(core)} strings, in order."),
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json", safety_settings=_SAFETY,
+            max_output_tokens=4096),
+    )
+    got = _json.loads(resp.text).get("answers", [])
+    return {q["text"]: (got[i] or "").strip()
+            for i, q in enumerate(core) if i < len(got) and got[i]}
+
+
+class CastLeadsIn(BaseModel):
+    limit: int = 2
+
+
+@router.post("/board/cast-leads")
+def cast_leads(body: CastLeadsIn, story_id: str | None = None):
+    """Cast the story's main characters: infer each lead's look from the script,
+    compile an Identity Card, and generate the reference sheet the face referee
+    locks onto. This is the image cost of import, made explicit and streamed, and
+    it is what makes an imported script's storyboard consistent rather than generic.
+    """
+    sid = _sid(story_id)
+    st = store.story(sid)
+    leads = [st.characters[cid]
+             for cid in _rank_leads(st, list(st.characters), max(1, body.limit))]
+    if not leads:
+        raise HTTPException(400, "no characters to cast; import a script first")
+
+    def work(emit):
+        from app.api.cast import CARDS
+        from app.bible import reindex_entity
+        from app.consistency import (IdentityCard, compile_identity_card,
+                                     fingerprint, generate_reference_sheet)
+        from app.images import save_png
+
+        cast_names: list[str] = []
+        for c in leads:
+            emit.thinking(f"casting {c.name}: reading the script for their look",
+                          agent="CastingDirector")
+            if not c.answers:
+                c.answers = _answers_from_script(st, c)
+            if not c.identity_card:
+                ic = compile_identity_card(c.name, c.answers, c.canon_version)
+                c.identity_card = {"descriptor": ic.descriptor,
+                                   "wardrobe": ic.wardrobe,
+                                   "negative": ic.negative,
+                                   "canon_version": c.canon_version}
+                emit.partial("identity_card", ic.descriptor)
+            card = IdentityCard(name=c.name,
+                                descriptor=c.identity_card["descriptor"],
+                                wardrobe=c.identity_card["wardrobe"],
+                                negative=c.identity_card.get("negative", ""),
+                                canon_version=c.canon_version)
+            emit.tool_call("generate_reference_sheet", {"character": c.name})
+            _charge(sid, 1)
+            card.sheet_png = generate_reference_sheet(card)
+            c.sheet_url = save_png(card.sheet_png,
+                                   f"sheet_{c.id}_v{c.canon_version}")
+            emit.tool_result("generate_reference_sheet", f"sheet at {c.sheet_url}")
+            card.face_embedding = fingerprint(card)
+            if card.face_embedding:
+                CARDS[c.id] = card
+                emit.tool_result("fingerprint", f"{len(card.face_embedding)} dims")
+            else:
+                emit.violation("no_face",
+                               f"no face detected on {c.name}'s sheet, so no "
+                               f"fingerprint; frames generate but cannot be scored")
+            reindex_entity(sid, "character", c.id)
+            cast_names.append(c.name)
+        return {"cast": cast_names}
+
+    return stream(work, agent="CastingDirector")
 
 
 def _render_shots(emit, sid: str, sc, shots: list, style: str,

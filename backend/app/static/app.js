@@ -408,7 +408,9 @@ $("#btnImport").onclick = async () => {
   const fd = new FormData();
   if (text) fd.append("text", text);
   if (file) fd.append("file", file);
-  fd.append("replace", $("#bdReplace").checked ? "true" : "false");
+  // Default is replace: one script, one story, one bible. The checkbox opts into
+  // appending to the current story instead.
+  fd.append("replace", $("#bdAppend").checked ? "false" : "true");
   $("#btnImport").disabled = true;
   $$("#itabs button")[1].click();
   try {
@@ -420,13 +422,27 @@ $("#btnImport").onclick = async () => {
     if (r.status === 401) { signedOut(); trace("import", "sign in required", "err"); return; }
     if (!r.ok) { trace("import", `${r.status} ${(await r.text()).slice(0, 200)}`, "err"); return; }
     const j = await r.json();
-    trace("import", `${j.imported} scene(s) added, starting at ${j.first_number}`, "done");
+    const leadNames = (j.leads || []).map((l) => l.name).join(", ");
+    trace("import", `${j.imported} scene(s), ${(j.characters || []).length} `
+      + `character(s). Leads: ${leadNames || "none"}. Cast them for face-lock.`, "done");
     $("#bdScript").value = ""; $("#bdFile").value = "";
     await load();
     $("#bdScene").value = j.first_number;
     drawBoard();
   } catch (e) { trace("import", String(e), "err"); }
   finally { $("#btnImport").disabled = false; }
+};
+
+/* Cast the story's main characters: derive their look from the script and
+ * generate the reference sheets the face referee locks onto. The image cost of
+ * import, kept a separate, deliberate step. */
+$("#btnCastLeads").onclick = async () => {
+  $("#btnCastLeads").disabled = true;
+  $$("#itabs button")[1].click();
+  await sse("/board/cast-leads", { limit: 2 }, {
+    run_end: () => { load(); budget(); },
+  });
+  $("#btnCastLeads").disabled = false;
 };
 
 /* Director chat for the selected scene. Text only: decide coverage before paying
