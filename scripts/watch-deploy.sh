@@ -32,13 +32,22 @@ MAX_FAILS="${MAX_FAILS:-3}"
 LAST=""
 FAILS=0
 
+# Watch the TEAM repo, not the fork. `upstream` is sahajm99/previz, which is where
+# teammates actually merge; `origin` is a personal fork and watching it would mean
+# a teammate's merge never reaches production while everything looks fine.
+# Falls back to origin when there is no upstream, so a clone of the team repo
+# itself still works unchanged.
+if [ -z "${REMOTE:-}" ]; then
+  if git remote get-url upstream >/dev/null 2>&1; then REMOTE=upstream; else REMOTE=origin; fi
+fi
+
 cd "$ROOT"
-echo "· watching origin/$BRANCH every ${INTERVAL}s. Ctrl-C to stop."
+echo "· watching $REMOTE/$BRANCH ($(git remote get-url $REMOTE)) every ${INTERVAL}s"
 
 while true; do
-  git fetch origin "$BRANCH" --quiet 2>/dev/null || {
+  git fetch "$REMOTE" "$BRANCH" --quiet 2>/dev/null || {
     echo "  fetch failed, retrying in ${INTERVAL}s"; sleep "$INTERVAL"; continue; }
-  SHA="$(git rev-parse "origin/$BRANCH")"
+  SHA="$(git rev-parse "$REMOTE/$BRANCH")"
 
   if [ "$SHA" != "$LAST" ]; then
     if [ -n "$LAST" ]; then
