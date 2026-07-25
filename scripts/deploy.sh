@@ -61,7 +61,21 @@ gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet >/dev/null 2>&1
 # Context is the repo root, not backend/, because the app reads
 # data/seed/character_questions.json. Building from backend/ produces an image that
 # boots, serves the UI, and 404s every /api route.
-docker build -q -f "$ROOT/backend/Dockerfile" \
+#
+# The Dockerfile is located rather than hardcoded. It has already moved once: a
+# commit relocated it from backend/ to the repo root and updated cloudbuild.yaml
+# and the workflow but not this line, so main could not deploy at all and the
+# error was the unhelpful "open Dockerfile: no such file or directory". Looking in
+# both places costs nothing and removes a whole class of breakage.
+if   [ -f "$ROOT/Dockerfile" ];         then DOCKERFILE="$ROOT/Dockerfile"
+elif [ -f "$ROOT/backend/Dockerfile" ]; then DOCKERFILE="$ROOT/backend/Dockerfile"
+else
+  echo "  NO DOCKERFILE. Looked in $ROOT/ and $ROOT/backend/. Nothing to build."
+  exit 1
+fi
+echo "· dockerfile $(basename "$(dirname "$DOCKERFILE")")/Dockerfile"
+
+docker build -q -f "$DOCKERFILE" \
   -t "$IMAGE:$TAG" -t "$IMAGE:latest" "$ROOT" >/dev/null
 docker push -q "$IMAGE:$TAG" >/dev/null
 docker push -q "$IMAGE:latest" >/dev/null
