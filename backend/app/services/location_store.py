@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +107,8 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 class LocationStore:
-    def __init__(self) -> None:
+    def __init__(self, session_id: str | None = None) -> None:
+        self.session_id = session_id or str(uuid.uuid4())
         self._locations: dict[str, LocationSuggestion] = {}
         self._shortlist_ids: set[str] = set()
         self._canvas_board: CanvasBoard = CanvasBoard()
@@ -118,7 +120,11 @@ class LocationStore:
         return p
 
     def _get_canvas_path(self) -> Path:
-        p = Path(__file__).parent.parent.parent / settings.canvas_db_file
+        if self.session_id == "default":
+            filename = settings.canvas_db_file
+        else:
+            filename = f"demo_cache/canvas_board_{self.session_id}.json"
+        p = Path(__file__).parent.parent.parent / filename
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
 
@@ -333,5 +339,15 @@ class LocationStore:
         return [loc for _, loc in scored[:limit]]
 
 
-# Singleton store instance
-store = LocationStore()
+_stores: dict[str, LocationStore] = {}
+
+
+def get_store(session_id: str | None = None) -> LocationStore:
+    sid = session_id or "default"
+    if sid not in _stores:
+        _stores[sid] = LocationStore(session_id=sid)
+    return _stores[sid]
+
+
+# Singleton store instance for default session
+store = get_store("default")

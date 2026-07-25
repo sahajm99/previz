@@ -4008,7 +4008,7 @@
         "Low RF interference"
       ],
       "vibe_match_score": 0.95,
-      "vibe_reasoning": "Strong semantic alignment on terms: neon, diner. Highly rated location with proven production reliability.",
+      "vibe_reasoning": "Strong semantic alignment on terms: diner, neon. Highly rated location with proven production reliability.",
       "photo_references": [],
       "street_view_url": "https://maps.googleapis.com/maps/api/streetview?size=600x400&location=40.75,-73.99&fov=90&key=",
       "embedding": [
@@ -4782,9 +4782,27 @@
         0.0108
       ],
       "similar_place_ids": []
+    },
+    {
+      "name": "Test Loc",
+      "address": "123 St",
+      "lat": 40.0,
+      "lng": -74.0,
+      "maps_url": "https://maps",
+      "photo_url": null,
+      "id": "test_loc_id",
+      "place_types": [],
+      "rating": null,
+      "budget_tier": "Low",
+      "permit_status": "Required",
+      "tech_reqs": [],
+      "vibe_match_score": null,
+      "vibe_reasoning": null,
+      "photo_references": [],
+      "street_view_url": null,
+      "embedding": null,
+      "similar_place_ids": []
     }
   ],
-  "shortlist_ids": [
-    "seed_brooklyn_warehouse"
-  ]
+  "shortlist_ids": []
 }

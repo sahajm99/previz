@@ -266,6 +266,15 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const btn = $("go"), status = $("status");
+  const getSessionId = () => {
+    let sid = localStorage.getItem("previz_session_id");
+    if (!sid) {
+      sid = "judge-" + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem("previz_session_id", sid);
+    }
+    return sid;
+  };
+  const fetchHeaders = () => ({ "Content-Type": "application/json", "X-Session-ID": getSessionId() });
   let currentLocations = [];
   let shortlistLocations = [];
   let currentSubTab = 'all';
@@ -305,7 +314,7 @@
 
   async function loadAllLocations() {
     try {
-      const res = await fetch("/api/v1/locations/all");
+      const res = await fetch("/api/v1/locations/all", { headers: { "X-Session-ID": getSessionId() } });
       if (res.ok) {
         currentLocations = await res.json();
         $("countAll").textContent = currentLocations.length;
@@ -316,7 +325,7 @@
 
   async function loadShortlist() {
     try {
-      const res = await fetch("/api/v1/locations/shortlist");
+      const res = await fetch("/api/v1/locations/shortlist", { headers: { "X-Session-ID": getSessionId() } });
       if (res.ok) {
         shortlistLocations = await res.json();
         $("countShort").textContent = shortlistLocations.length;
@@ -335,7 +344,7 @@
     try {
       const res = await fetch("/api/v1/locations/search", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: fetchHeaders(),
         body: JSON.stringify({
           query,
           region: $("scoutRegion").value,
@@ -361,7 +370,7 @@
     try {
       const res = await fetch("/api/v1/locations/shortlist", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: fetchHeaders(),
         body: JSON.stringify({ location: loc, shortlisted: !current })
       });
       if (res.ok) {
@@ -377,7 +386,7 @@
     try {
       const res = await fetch("/api/v1/locations/similar", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: fetchHeaders(),
         body: JSON.stringify({ place_id: loc.id || loc.name, limit: 3 })
       });
       if (res.ok) {
@@ -391,7 +400,7 @@
 
   async function addToCanvas(loc) {
     try {
-      const res = await fetch("/api/v1/locations/canvas");
+      const res = await fetch("/api/v1/locations/canvas", { headers: { "X-Session-ID": getSessionId() } });
       if (res.ok) {
         const board = await res.json();
         if (board.nodes && board.nodes.length > 0) {
@@ -399,7 +408,7 @@
           board.nodes[0].location = loc;
           await fetch("/api/v1/locations/canvas", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: fetchHeaders(),
             body: JSON.stringify(board)
           });
           switchSubTab('canvas');
@@ -453,7 +462,7 @@
 
   async function loadCanvas() {
     try {
-      const res = await fetch("/api/v1/locations/canvas");
+      const res = await fetch("/api/v1/locations/canvas", { headers: { "X-Session-ID": getSessionId() } });
       if (res.ok) {
         const board = await res.json();
         const area = $("canvasBoardArea");

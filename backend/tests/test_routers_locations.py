@@ -68,3 +68,19 @@ def test_query_context_endpoint():
     data = res.json()
     assert isinstance(data, list)
     assert len(data) >= 1
+
+
+def test_session_isolation_via_header():
+    res1 = client.get("/api/v1/locations/canvas", headers={"X-Session-ID": "judge-alpha"})
+    assert res1.status_code == 200
+    board1 = res1.json()
+    if board1["nodes"]:
+        board1["nodes"][0]["notes"] = "Note from judge alpha"
+    client.post("/api/v1/locations/canvas", json=board1, headers={"X-Session-ID": "judge-alpha"})
+
+    res2 = client.get("/api/v1/locations/canvas", headers={"X-Session-ID": "judge-beta"})
+    assert res2.status_code == 200
+    board2 = res2.json()
+    if board2["nodes"]:
+        assert board2["nodes"][0]["notes"] != "Note from judge alpha"
+
